@@ -1,0 +1,17 @@
+// swift-tools-version: 5.9
+
+import PackageDescription
+
+let package = Package(
+    name: "notifications",
+    platforms: [.macOS(.v12)],
+    targets: [
+        .executableTarget(
+            name: "notifications",
+            path: "Sources",
+            linkerSettings: [
+                .unsafeFlags(["-framework", "UserNotifications"])
+            ]
+        )
+    ]
+)

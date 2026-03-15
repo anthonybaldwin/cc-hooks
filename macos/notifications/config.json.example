@@ -1,0 +1,8 @@
+{
+    "terminal": "ghostty",
+    "editor": "zed",
+    "messages": {
+        "notification": "Claude needs your input",
+        "stop": "Task completed"
+    }
+}

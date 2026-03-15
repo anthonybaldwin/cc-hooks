@@ -7,7 +7,7 @@
 | Platform | Status |
 |----------|--------|
 | [Windows](windows/) | Available |
-| macOS | Planned |
+| [macOS](macos/) | Available |
 | Linux | Planned |
 
 See the platform directory for setup instructions.
