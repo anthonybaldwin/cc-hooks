@@ -1,12 +1,15 @@
-# CC Hooks — Windows Install Script
+# CC Hooks — Windows Install
 #
-# One-time setup:
-# 1. Builds the Rust notifications exe
-# 2. Registers claude-focus:// and claude-editor:// protocol handlers
-#    (for toast button clicks → trigger file / editor launch)
-# 3. Creates a Start Menu shortcut with AUMID
-#    (Windows requires this for unpackaged apps to show toast notifications)
-# 4. Adds hooks to ~/.claude/settings.json (merges, won't overwrite other settings)
+# Run: pwsh -NoProfile -File install.ps1
+# Triggers a UAC prompt for the HKLM registry write (icon + display name).
+#
+# What it does:
+# 1. Builds notifications.exe from Rust source (cargo build --release)
+# 2. Registers claude-focus:// and claude-editor:// protocol handlers (HKCU)
+#    so toast button clicks route to the exe
+# 3. Registers AUMID in HKLM for toast attribution (display name + icon)
+#    Falls back to HKCU (no icon) if admin is declined
+# 4. Merges hook config into ~/.claude/settings.json
 
 $winDir = $PSScriptRoot
 $notifDir = Join-Path $winDir "notifications"
@@ -34,36 +37,50 @@ foreach ($proto in @(
     Write-Host "Registered $($proto.name)://"
 }
 
-# Create Start Menu shortcut with AUMID (Application User Model ID).
-# The shortcut name = attribution text at the top of toast notifications.
-# The shortcut icon = small icon next to the attribution text.
-$startMenu = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs"
+# Register AUMID in HKLM for toast notification attribution (icon + display name).
+# Requires elevation — self-elevates via UAC prompt if not already admin.
+$configPath = Join-Path $notifDir "config.json"
+$config = if (Test-Path $configPath) { Get-Content $configPath -Raw | ConvertFrom-Json } else { $null }
+$title = if ($config -and $config.title) { $config.title } else { "CC Notification" }
+$iconFile = if ($config -and $config.icons -and $config.icons.title) { $config.icons.title } else { "icons\title.ico" }
+$iconPath = Join-Path $notifDir $iconFile
 
-# Remove any old shortcuts pointing to our exe
+$aumidKey = "HKLM:\Software\Classes\AppUserModelId\ClaudeCode.Hooks"
+# Try configured icon path, fall back to .ico
+if (-not (Test-Path $iconPath)) { $iconPath = Join-Path $notifDir "icons\title.ico" }
+$regCmd = "New-Item -Path '$aumidKey' -Force | Out-Null; " +
+    "New-ItemProperty -Path '$aumidKey' -Name 'DisplayName' -Value '$title' -PropertyType ExpandString -Force | Out-Null; " +
+    "New-ItemProperty -Path '$aumidKey' -Name 'IconUri' -Value '$iconPath' -PropertyType ExpandString -Force | Out-Null"
+
+$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if ($isAdmin) {
+    Invoke-Expression $regCmd
+    Write-Host "Registered AUMID: ClaudeCode.Hooks ($title) [HKLM]"
+} else {
+    try {
+        Start-Process pwsh -Verb RunAs -ArgumentList "-NoProfile -Command $regCmd" -Wait
+        Write-Host "Registered AUMID: ClaudeCode.Hooks ($title) [HKLM]"
+    } catch {
+        # UAC declined — fall back to HKCU (no icon support, but DisplayName works)
+        $fallbackKey = "HKCU:\Software\Classes\AppUserModelId\ClaudeCode.Hooks"
+        New-Item -Path $fallbackKey -Force | Out-Null
+        New-ItemProperty -Path $fallbackKey -Name "DisplayName" -Value $title -PropertyType ExpandString -Force | Out-Null
+        Write-Host "Registered AUMID without icon (admin declined). To add icon, run as admin:"
+        Write-Host "  pwsh -NoProfile -File $($MyInvocation.MyCommand.Path)"
+    }
+}
+
+# Clean up old Start Menu shortcuts and HKCU AUMID from previous installs
+$startMenu = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs"
 Get-ChildItem "$startMenu\*.lnk" | ForEach-Object {
     try {
         $ws = New-Object -ComObject WScript.Shell
         $sc = $ws.CreateShortcut($_.FullName)
-        if ($sc.TargetPath -match "notifications") { Remove-Item $_.FullName -Force }
+        if ($sc.TargetPath -match "notifications") { Remove-Item $_.FullName -Force; Write-Host "Removed old shortcut: $($_.Name)" }
     } catch {}
 }
-
-# Create fresh shortcut
-$configPath = Join-Path $notifDir "config.json"
-$config = if (Test-Path $configPath) { Get-Content $configPath -Raw | ConvertFrom-Json } else { $null }
-$title = if ($config -and $config.title) { $config.title } else { "CC Notification" }
-$lnk = Join-Path $startMenu "$title.lnk"
-$ws = New-Object -ComObject WScript.Shell
-$sc = $ws.CreateShortcut($lnk)
-$sc.TargetPath = $exe
-$titleIco = Join-Path $notifDir "icons\title.ico"
-if (Test-Path $titleIco) { $sc.IconLocation = $titleIco }
-$sc.Save()
-
-# Set the AUMID property on the shortcut (must match the AUMID in main.rs)
-Add-Type -Path (Join-Path $notifDir "ShortcutAumid.cs")
-[ShortcutAumid]::Set($lnk, "ClaudeCode.Hooks")
-Write-Host "Created shortcut: $lnk"
+$oldKey = "HKCU:\Software\Classes\AppUserModelId\ClaudeCode.Hooks"
+if (Test-Path $oldKey) { Remove-Item $oldKey -Force; Write-Host "Removed old HKCU AUMID key" }
 
 # Add hooks to settings.json (only touches our hook events, preserves everything else)
 $claude = Join-Path $env:USERPROFILE ".claude"

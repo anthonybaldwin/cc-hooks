@@ -34,7 +34,7 @@ Copy `config.json.example` to `config.json` and edit:
 
 | Field | Description |
 |-------|-------------|
-| `title` | Name shown in toast attribution bar (Start Menu shortcut name) |
+| `title` | Name shown in toast attribution bar |
 | `editor` | Editor to open projects in (e.g., `zed`, `code`) |
 
 ### Icons
@@ -51,4 +51,3 @@ Place in `icons/` (gitignored):
 | `src/main.rs` | Rust source — all hook commands + focus watcher |
 | `Cargo.toml` | Build configuration + dependencies |
 | `config.json.example` | Example config (copy to `config.json`) |
-| `ShortcutAumid.cs` | Sets AUMID on Start Menu shortcut (used by install) |

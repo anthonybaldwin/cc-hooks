@@ -1,18 +1,29 @@
+// Prevents console window flash when launched by protocol handlers or toast clicks.
+// Stdin/stdout still work when piped by Claude Code's hook system.
 #![windows_subsystem = "windows"]
 
-// CC Hooks — Windows notification system (Rust)
+// CC Hooks — Windows notification system
 //
-// Single exe with subcommands, called by Claude Code hooks in settings.json:
-//   on-submit    — saves session state (timer, WT PID, tab ID), then runs focus watcher loop
-//                  (async: true in settings.json so Claude doesn't wait)
-//   notify       — shows toast notification via WinRT API
-//   on-end       — kills watcher, cleans up temp files
-//   trigger      — protocol handler for claude-focus:// (creates trigger file for watcher)
-//   editor       — protocol handler for claude-editor:// (launches configured editor)
+// Single native exe (~350KB) called by Claude Code hooks (settings.json).
+// Replaces the original C#/.NET version (25MB + runtime dependency).
 //
-// Reads config from ../config.json (relative to bin/).
-// Reads icons from ../icons/ (relative to bin/).
-// Stores session data in %TEMP%/claude-timer-{session_id}.txt
+// Subcommands (each invoked as a separate process by hook events):
+//   on-submit  — UserPromptSubmit hook (async: true). Captures session state
+//                (WT PID, tab ID, cwd, timestamp) then enters a focus watcher
+//                loop. Runs in WT's process tree so UI Automation works.
+//   notify     — Notification/Stop hook. Shows a WinRT toast with project name,
+//                elapsed time, and buttons for terminal focus + editor launch.
+//   on-end     — SessionEnd hook. Kills the watcher, cleans up temp files.
+//   trigger    — Protocol handler for claude-focus://. Creates a trigger file
+//                that the watcher polls for (toast "Focus Terminal" button).
+//   editor     — Protocol handler for claude-editor://. Launches the configured
+//                editor with the project directory (toast "Open in Editor" button).
+//
+// Config: ../config.json (relative to bin/). See config.json.example.
+// Icons:  ../icons/ (gitignored). PNG for toast body, ICO for attribution bar.
+// State:  %TEMP%/claude-timer-{session_id}.txt (pipe-delimited session data)
+//         %TEMP%/claude-watcher-{session_id}.txt (watcher PID for cleanup)
+//         %TEMP%/claude-focus-trigger-{session_id} (empty file, IPC with watcher)
 
 use std::collections::HashMap;
 use std::env;
@@ -37,8 +48,8 @@ use windows::Win32::System::Variant::VARIANT;
 use windows::Win32::UI::Accessibility::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
 
-// Application User Model ID — must match the AUMID set on the Start Menu shortcut
-// by install.ps1. Windows uses this to associate toasts with the shortcut's name/icon.
+// Application User Model ID — registered in HKLM by install.ps1.
+// Windows uses this to associate toasts with the app's display name and icon.
 const AUMID: &str = "ClaudeCode.Hooks";
 
 // ═══════════════════════════════════════
@@ -97,16 +108,20 @@ fn main() -> ExitCode {
 }
 
 // ═══════════════════════════════════════
-// on-submit — called on every user message (UserPromptSubmit hook, async: true)
+// on-submit — UserPromptSubmit hook (async: true)
 //
-// Because this process is a child of WT's process tree (bash → claude → WT),
-// UI Automation tab selection (SelectionItemPattern.Select()) works directly.
-// No WMI/VBS detachment needed — async: true prevents blocking Claude.
+// Saves session state, then enters the focus watcher loop. With async: true,
+// Claude doesn't wait for this process to exit. Since we're spawned inside
+// WT's process tree (bash → claude → WT), UI Automation tab selection works
+// directly — no detached process or polling hack needed.
 // ═══════════════════════════════════════
 
 fn on_submit(_base_dir: &Path) -> i32 {
     let json = match read_stdin() { Some(j) => j, None => return 1 };
     let sid = match json.get("session_id").and_then(|v| v.as_str()) { Some(s) => s.to_string(), None => return 1 };
+
+    // Kill previous watcher for this session
+    kill_watcher(&sid);
 
     let cwd = env::current_dir().unwrap_or_default().to_string_lossy().to_string();
     let ts = now_ms();
@@ -137,7 +152,11 @@ fn on_submit(_base_dir: &Path) -> i32 {
 }
 
 // ═══════════════════════════════════════
-// notify — shows toast notification via WinRT API
+// notify — Notification/Stop hook
+//
+// Reads session state from the timer file, calculates elapsed time since
+// the last user message, and shows a WinRT toast with project name, message,
+// icon, and action buttons (Focus Terminal + Open in Editor).
 // ═══════════════════════════════════════
 
 fn notify(hook_event: &str, base_dir: &Path, config: &Config) -> i32 {
@@ -274,7 +293,12 @@ fn open_editor(uri: &str, config: &Config) -> i32 {
 }
 
 // ═══════════════════════════════════════
-// Focus watcher — polls for trigger file, focuses WT window + selects tab
+// Focus watcher
+//
+// Polls %TEMP% for a trigger file (created by the claude-focus:// protocol
+// handler when the user clicks "Focus Terminal" on a toast). When found,
+// uses UI Automation to focus the WT window and select the correct tab.
+// Exits when WT or Claude process dies. Debounces within 2 seconds.
 // ═══════════════════════════════════════
 
 fn watch_for_trigger(sid: &str, wt_pid: u32, claude_pid: u32, tab_rid: &str) {
@@ -348,7 +372,10 @@ fn focus_terminal(wt_pid: u32, tab_rid: &str) {
 }
 
 // ═══════════════════════════════════════
-// Process helpers — uses CreateToolhelp32Snapshot instead of WMI
+// Process helpers
+//
+// Uses CreateToolhelp32Snapshot to walk the process tree (lighter than WMI).
+// Finds WT and Claude PIDs by walking from our PID upward through parents.
 // ═══════════════════════════════════════
 
 fn find_ancestors() -> (u32, u32) {
@@ -414,6 +441,10 @@ fn kill_watcher(sid: &str) {
 
 // ═══════════════════════════════════════
 // UI Automation helpers
+//
+// COM-based UI Automation (IUIAutomation) for finding WT tabs by process ID,
+// reading RuntimeIds (stable across tab reorders), and selecting tabs.
+// All calls must run on an STA thread (see run_on_sta).
 // ═══════════════════════════════════════
 
 fn create_automation() -> windows::core::Result<IUIAutomation> {
