@@ -9,6 +9,7 @@ When Claude finishes or needs input, you get a toast notification showing:
 - **Focus Terminal** button — brings Windows Terminal to front and switches to the correct tab
 - **Open in Editor** button — opens the project directory in your configured editor
 - Clicking the notification body also focuses the terminal
+- Notifications replace by session (no stacking)
 
 Skips notifications when running inside an IDE (Zed, VS Code, etc.).
 
@@ -27,15 +28,15 @@ Copy `config.json.example` to `config.json` and edit:
     "icons": {
         "notification": "icons/notification.png",
         "stop": "icons/stop.png",
-        "title": "icons/title.png"
+        "title": "icons/title.ico"
     }
 }
 ```
 
 | Field | Description |
 |-------|-------------|
-| `title` | Name shown in toast attribution bar |
-| `editor` | Editor to open projects in (e.g., `zed`, `code`) |
+| `title` | Name shown in toast attribution bar (registered in HKLM during install) |
+| `editor` | Editor to open projects in (`zed`, `code`, `cursor`) |
 
 ### Icons
 
@@ -48,6 +49,6 @@ Place in `icons/` (gitignored):
 
 | File | Purpose |
 |------|---------|
-| `src/main.rs` | Rust source — all hook commands + focus watcher |
+| `src/main.rs` | Rust source — all hook commands, focus watcher, install/uninstall |
 | `Cargo.toml` | Build configuration + dependencies |
 | `config.json.example` | Example config (copy to `config.json`) |

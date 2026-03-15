@@ -8,10 +8,7 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "notifications",
-            path: "Sources",
-            linkerSettings: [
-                .unsafeFlags(["-framework", "UserNotifications"])
-            ]
+            path: "Sources"
         )
     ]
 )

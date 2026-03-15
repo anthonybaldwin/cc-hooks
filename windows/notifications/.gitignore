@@ -2,3 +2,4 @@ bin/
 config.json
 icons/
 target/
+src/obj/

@@ -3,9 +3,7 @@
 #
 # Run: bash install.sh
 #
-# Builds the Swift binary, copies config if needed, and merges
-# hook config into ~/.claude/settings.json (via the binary itself,
-# no python dependency).
+# Builds the Swift binary, copies config if needed, and registers hooks.
 
 set -euo pipefail
 

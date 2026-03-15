@@ -1,7 +1,7 @@
 # CC Hooks — Windows Uninstall
 #
 # Run: pwsh -NoProfile -File uninstall.ps1
-# Triggers a UAC prompt for the HKLM registry removal.
+# Triggers a UAC prompt for HKLM registry removal.
 #
 # Removes: watcher processes, protocol handlers (HKCU), AUMID keys
 # (HKCU + HKLM), and notification hooks from ~/.claude/settings.json.
@@ -26,24 +26,10 @@ if ($isAdmin) {
     catch { Write-Host "Skipped HKLM removal (admin declined). Remove manually: HKLM\Software\Classes\AppUserModelId\ClaudeCode.Hooks" }
 }
 
-$settingsPath = Join-Path $env:USERPROFILE ".claude\settings.json"
-if (Test-Path $settingsPath) {
-    $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
-    if ($settings.PSObject.Properties['hooks']) {
-        foreach ($event in @("UserPromptSubmit", "Notification", "Stop", "SessionEnd")) {
-            if ($settings.hooks.PSObject.Properties[$event]) {
-                $filtered = @($settings.hooks.$event | Where-Object {
-                    -not ($_.hooks | Where-Object { $_.command -match "notifications" })
-                })
-                if ($filtered.Count -eq 0) { $settings.hooks.PSObject.Properties.Remove($event) }
-                else { $settings.hooks.$event = $filtered }
-            }
-        }
-        if (($settings.hooks.PSObject.Properties | Measure-Object).Count -eq 0) {
-            $settings.PSObject.Properties.Remove('hooks')
-        }
-        $settings | ConvertTo-Json -Depth 10 | Set-Content $settingsPath -Encoding UTF8
-    }
+# Hook config + temp file cleanup
+$exe = Join-Path $PSScriptRoot "notifications\bin\notifications.exe"
+if (Test-Path $exe) {
+    & $exe uninstall
+} else {
+    Write-Host "Uninstalled"
 }
-
-Write-Host "Uninstalled"

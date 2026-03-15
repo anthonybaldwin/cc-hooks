@@ -4,5 +4,9 @@
     "messages": {
         "notification": "Claude needs your input",
         "stop": "Task completed"
+    },
+    "icons": {
+        "notification": "icons/notification.png",
+        "stop": "icons/stop.png"
     }
 }

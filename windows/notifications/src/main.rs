@@ -5,7 +5,6 @@
 // CC Hooks — Windows notification system
 //
 // Single native exe (~350KB) called by Claude Code hooks (settings.json).
-// Replaces the original C#/.NET version (25MB + runtime dependency).
 //
 // Subcommands (each invoked as a separate process by hook events):
 //   on-submit  — UserPromptSubmit hook (async: true). Captures session state
@@ -18,6 +17,8 @@
 //                that the watcher polls for (toast "Focus Terminal" button).
 //   editor     — Protocol handler for claude-editor://. Launches the configured
 //                editor with the project directory (toast "Open in Editor" button).
+//   install    — Merges hook config into ~/.claude/settings.json.
+//   uninstall  — Removes hooks from settings.json, cleans up temp files.
 //
 // Config: ../config.json (relative to bin/). See config.json.example.
 // Icons:  ../icons/ (gitignored). PNG for toast body, ICO for attribution bar.
@@ -91,7 +92,7 @@ fn main() -> ExitCode {
 
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
-        eprintln!("Usage: notifications <on-submit|notify|on-end|trigger|editor>");
+        eprintln!("Usage: notifications <on-submit|notify|on-end|trigger|editor|install|uninstall>");
         return ExitCode::from(1);
     }
 
@@ -101,6 +102,8 @@ fn main() -> ExitCode {
         "on-end" => on_end(),
         "trigger" => trigger(args.get(2).map(|s| s.as_str()).unwrap_or("")),
         "editor" => open_editor(args.get(2).map(|s| s.as_str()).unwrap_or(""), &config),
+        "install" => install_hooks(&exe),
+        "uninstall" => uninstall_hooks(),
         other => { eprintln!("Unknown: {other}"); 1 }
     };
 
@@ -256,6 +259,110 @@ fn on_end() -> i32 {
     timer_delete(sid);
     trigger_delete(sid);
     watcher_pid_delete(sid);
+    0
+}
+
+// ═══════════════════════════════════════
+// install / uninstall — manages ~/.claude/settings.json
+// ═══════════════════════════════════════
+
+fn settings_path() -> PathBuf {
+    let home = env::var("USERPROFILE").unwrap_or_else(|_| env::var("HOME").unwrap_or_default());
+    PathBuf::from(home).join(".claude").join("settings.json")
+}
+
+fn install_hooks(exe: &Path) -> i32 {
+    let path = settings_path();
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+
+    let mut settings: serde_json::Map<String, serde_json::Value> = fs::read_to_string(&path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default();
+
+    let exe_str = exe.to_string_lossy().replace('\\', "/");
+
+    let hook_entry = |cmd: &str, async_flag: bool| -> serde_json::Value {
+        let mut hook = serde_json::json!({
+            "type": "command",
+            "command": format!("{exe_str} {cmd}")
+        });
+        if async_flag {
+            hook.as_object_mut().unwrap().insert("async".into(), serde_json::Value::Bool(true));
+        }
+        serde_json::json!([{"matcher": "", "hooks": [hook]}])
+    };
+
+    let mut hooks: serde_json::Map<String, serde_json::Value> = settings
+        .get("hooks")
+        .and_then(|h| h.as_object().cloned())
+        .unwrap_or_default();
+
+    hooks.insert("UserPromptSubmit".into(), hook_entry("on-submit", true));
+    hooks.insert("Notification".into(), hook_entry("notify notification", false));
+    hooks.insert("Stop".into(), hook_entry("notify stop", false));
+    hooks.insert("SessionEnd".into(), hook_entry("on-end", false));
+
+    settings.insert("hooks".into(), serde_json::Value::Object(hooks));
+
+    let Ok(json) = serde_json::to_string_pretty(&settings) else { return 1 };
+    if fs::write(&path, json).is_err() { return 1; }
+
+    eprintln!("Updated {}", path.display());
+    0
+}
+
+fn uninstall_hooks() -> i32 {
+    // Clean temp files
+    if let Ok(entries) = fs::read_dir(env::temp_dir()) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with("claude-timer-") || name.starts_with("claude-watcher-") || name.starts_with("claude-focus-trigger-") {
+                let _ = fs::remove_file(entry.path());
+            }
+        }
+    }
+
+    // Remove hooks from settings.json
+    let path = settings_path();
+    let Ok(content) = fs::read_to_string(&path) else {
+        eprintln!("Uninstalled");
+        return 0;
+    };
+    let Ok(mut settings) = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&content) else {
+        eprintln!("Uninstalled");
+        return 0;
+    };
+
+    if let Some(hooks_val) = settings.get_mut("hooks") {
+        if let Some(hooks) = hooks_val.as_object_mut() {
+            for event in &["UserPromptSubmit", "Notification", "Stop", "SessionEnd"] {
+                if let Some(entries) = hooks.get_mut(*event) {
+                    if let Some(arr) = entries.as_array_mut() {
+                        arr.retain(|entry| {
+                            let hook_list = entry.get("hooks").and_then(|h| h.as_array());
+                            !hook_list.map_or(false, |list| {
+                                list.iter().any(|h| {
+                                    h.get("command").and_then(|c| c.as_str())
+                                        .map_or(false, |c| c.contains("notifications"))
+                                })
+                            })
+                        });
+                        if arr.is_empty() { hooks.remove(*event); }
+                    }
+                }
+            }
+            if hooks.is_empty() { settings.remove("hooks"); }
+        }
+    }
+
+    if let Ok(json) = serde_json::to_string_pretty(&settings) {
+        let _ = fs::write(&path, json);
+    }
+
+    eprintln!("Uninstalled");
     0
 }
 

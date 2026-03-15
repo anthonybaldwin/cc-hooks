@@ -2,6 +2,11 @@
 
 CC hooks for macOS terminals.
 
+## Requirements
+
+- Xcode Command Line Tools (`xcode-select --install`)
+- [terminal-notifier](https://github.com/julienXX/terminal-notifier) (`brew install terminal-notifier`) — for click actions
+
 ## Install
 
 ```bash
