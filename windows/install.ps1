@@ -1,7 +1,7 @@
-# Claude Code Hooks — Windows Install Script
+# CC Hooks — Windows Install Script
 #
 # One-time setup:
-# 1. Builds the C# notifications exe
+# 1. Builds the Rust notifications exe
 # 2. Registers claude-focus:// and claude-editor:// protocol handlers
 #    (for toast button clicks → trigger file / editor launch)
 # 3. Creates a Start Menu shortcut with AUMID
@@ -12,9 +12,11 @@ $winDir = $PSScriptRoot
 $notifDir = Join-Path $winDir "notifications"
 $exe = Join-Path $notifDir "bin\notifications.exe"
 
-# Build the C# project
+# Build the Rust project
 Write-Host "Building..."
-dotnet publish (Join-Path $notifDir "src") -c Release -r win-x64 --self-contained false -o (Join-Path $notifDir "bin") 2>&1 | Select-Object -Last 1
+cargo build --release --manifest-path (Join-Path $notifDir "Cargo.toml") 2>&1 | Select-Object -Last 3
+New-Item -ItemType Directory -Path (Join-Path $notifDir "bin") -Force | Out-Null
+Copy-Item (Join-Path $notifDir "target\release\notifications.exe") (Join-Path $notifDir "bin\notifications.exe") -Force
 
 # Register protocol handlers
 # - claude-focus://  → notifications.exe trigger %1 (creates trigger file for watcher)
@@ -47,7 +49,10 @@ Get-ChildItem "$startMenu\*.lnk" | ForEach-Object {
 }
 
 # Create fresh shortcut
-$lnk = Join-Path $startMenu "Claude Code.lnk"
+$configPath = Join-Path $notifDir "config.json"
+$config = if (Test-Path $configPath) { Get-Content $configPath -Raw | ConvertFrom-Json } else { $null }
+$title = if ($config -and $config.title) { $config.title } else { "CC Notification" }
+$lnk = Join-Path $startMenu "$title.lnk"
 $ws = New-Object -ComObject WScript.Shell
 $sc = $ws.CreateShortcut($lnk)
 $sc.TargetPath = $exe
@@ -55,7 +60,7 @@ $titleIco = Join-Path $notifDir "icons\title.ico"
 if (Test-Path $titleIco) { $sc.IconLocation = $titleIco }
 $sc.Save()
 
-# Set the AUMID property on the shortcut (must match the AUMID in Program.cs)
+# Set the AUMID property on the shortcut (must match the AUMID in main.rs)
 Add-Type -Path (Join-Path $notifDir "ShortcutAumid.cs")
 [ShortcutAumid]::Set($lnk, "ClaudeCode.Hooks")
 Write-Host "Created shortcut: $lnk"

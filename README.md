@@ -1,4 +1,4 @@
-# Claude Hooks
+# CC Hooks
 
 [Claude Code](https://claude.com/product/claude-code) notification [hooks](https://code.claude.com/docs/en/hooks) with terminal focus, elapsed time tracking, and editor integration.
 

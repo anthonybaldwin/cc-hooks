@@ -1,0 +1,13 @@
+{
+    "title": "CC Notification",
+    "editor": "zed",
+    "messages": {
+        "notification": "Claude needs your input",
+        "stop": "Task completed"
+    },
+    "icons": {
+        "notification": "icons/notification.png",
+        "stop": "icons/stop.png",
+        "title": "icons/title.png"
+    }
+}

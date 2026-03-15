@@ -14,10 +14,11 @@ Skips notifications when running inside an IDE (Zed, VS Code, etc.).
 
 ## Configuration
 
-Edit `config.json`:
+Copy `config.json.example` to `config.json` and edit:
 
 ```json
 {
+    "title": "CC Notification",
     "editor": "zed",
     "messages": {
         "notification": "Claude needs your input",
@@ -25,10 +26,16 @@ Edit `config.json`:
     },
     "icons": {
         "notification": "icons/notification.png",
-        "stop": "icons/stop.png"
+        "stop": "icons/stop.png",
+        "title": "icons/title.png"
     }
 }
 ```
+
+| Field | Description |
+|-------|-------------|
+| `title` | Name shown in toast attribution bar (Start Menu shortcut name) |
+| `editor` | Editor to open projects in (e.g., `zed`, `code`) |
 
 ### Icons
 
@@ -41,7 +48,7 @@ Place in `icons/` (gitignored):
 
 | File | Purpose |
 |------|---------|
-| `src/Program.cs` | C# source — all hook commands + focus watcher |
-| `src/Notifications.csproj` | Build configuration |
-| `config.json` | Editor, messages, and icon paths |
+| `src/main.rs` | Rust source — all hook commands + focus watcher |
+| `Cargo.toml` | Build configuration + dependencies |
+| `config.json.example` | Example config (copy to `config.json`) |
 | `ShortcutAumid.cs` | Sets AUMID on Start Menu shortcut (used by install) |

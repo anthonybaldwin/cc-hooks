@@ -1,6 +1,6 @@
 # Windows
 
-Claude Code hooks for Windows Terminal.
+CC hooks for Windows Terminal.
 
 ## Install
 
