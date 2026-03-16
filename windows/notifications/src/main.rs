@@ -172,7 +172,7 @@ fn notify(hook_event: &str, base_dir: &Path, config: &Config) -> i32 {
     if wt_pid == 0 { return 0; } // IDE, skip
 
     let cwd = timer.get(3).cloned().unwrap_or_default();
-    let dir = Path::new(json_cwd.as_deref().unwrap_or(&cwd))
+    let dir = Path::new(if cwd.is_empty() { json_cwd.as_deref().unwrap_or_default() } else { &cwd })
         .file_name().unwrap_or_default().to_string_lossy().to_string();
 
     // Elapsed time since last user message
@@ -418,8 +418,14 @@ fn watch_for_trigger(sid: &str, wt_pid: u32, claude_pid: u32, tab_rid: &str) {
         let mut last_focus: u64 = 0;
 
         loop {
-            if !process_alive(wt_pid) { return; }
-            if claude_pid != 0 && !process_alive(claude_pid) { return; }
+            if !process_alive(wt_pid) || (claude_pid != 0 && !process_alive(claude_pid)) {
+                // Parent died without SessionEnd firing — clean up our own files
+                // so they don't linger as orphans in %TEMP%.
+                timer_delete(&sid);
+                trigger_delete(&sid);
+                watcher_pid_delete(&sid);
+                return;
+            }
 
             if trigger.exists() {
                 let _ = fs::remove_file(&trigger);

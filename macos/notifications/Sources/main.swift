@@ -213,7 +213,7 @@ func notify(hookEvent: String, baseDir: String) -> Int32 {
     else { return 0 }
 
     let startMs = UInt64(timer[0]) ?? 0
-    let cwd = jsonCwd ?? timer[1]
+    let cwd = timer[1].isEmpty ? (jsonCwd ?? "") : timer[1]
     let terminal = timer[2]
     let editor = timer[3]
     let tty = timer.count > 4 ? timer[4] : ""
