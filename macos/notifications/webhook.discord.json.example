@@ -1,0 +1,7 @@
+{
+    "embeds": [{
+        "title": "{{project}}",
+        "description": "{{message}} {{elapsed}}",
+        "color": 15236161
+    }]
+}

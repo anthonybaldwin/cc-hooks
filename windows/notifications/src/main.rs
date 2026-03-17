@@ -38,6 +38,8 @@ use std::time::Duration;
 
 use serde::Deserialize;
 use windows::core::*;
+use windows::Win32::System::SystemInformation::GetTickCount;
+use windows::Win32::UI::Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO};
 use windows::Data::Xml::Dom::XmlDocument;
 use windows::UI::Notifications::*;
 use windows::Win32::Foundation::*;
@@ -62,11 +64,14 @@ struct Config {
     editor: Option<String>,
     messages: Option<Messages>,
     icons: Option<Icons>,
+    webhook: Option<WebhookConfig>,
 }
 
 #[derive(Deserialize, Default)]
 struct Messages {
     notification: Option<String>,
+    permission: Option<String>,
+    elicitation: Option<String>,
     stop: Option<String>,
 }
 
@@ -76,14 +81,31 @@ struct Icons {
     stop: Option<String>,
 }
 
+#[derive(Deserialize, Default)]
+struct WebhookConfig {
+    url: Option<String>,
+    idle_minutes: Option<u32>,
+    payload: Option<String>,  // Path to JSON template file
+}
+
 // ═══════════════════════════════════════
 // Entry point
 // ═══════════════════════════════════════
 
 fn main() -> ExitCode {
     let exe = env::current_exe().unwrap_or_default();
-    let bin_dir = exe.parent().unwrap_or(Path::new("."));
-    let base_dir = bin_dir.parent().unwrap_or(Path::new(".")).to_path_buf();
+    // Find project root by walking up from exe looking for config.json.
+    // Works from both bin/ and target/release/.
+    let base_dir = {
+        let mut dir = exe.parent().unwrap_or(Path::new("."));
+        loop {
+            if dir.join("config.json").exists() { break dir.to_path_buf(); }
+            match dir.parent() {
+                Some(p) => dir = p,
+                None => break exe.parent().unwrap_or(Path::new(".")).to_path_buf(),
+            }
+        }
+    };
 
     let config: Config = fs::read_to_string(base_dir.join("config.json"))
         .ok()
@@ -126,7 +148,8 @@ fn on_submit(_base_dir: &Path) -> i32 {
     // Kill previous watcher for this session
     kill_watcher(&sid);
 
-    let cwd = env::current_dir().unwrap_or_default().to_string_lossy().to_string();
+    let cwd = json.get("cwd").and_then(|v| v.as_str()).map(String::from)
+        .unwrap_or_else(|| env::current_dir().unwrap_or_default().to_string_lossy().to_string());
     let ts = now_ms();
 
     let (wt_pid, claude_pid) = find_ancestors();
@@ -166,14 +189,20 @@ fn notify(hook_event: &str, base_dir: &Path, config: &Config) -> i32 {
     let json = match read_stdin() { Some(j) => j, None => return 1 };
     let sid = match json.get("session_id").and_then(|v| v.as_str()) { Some(s) => s.to_string(), None => return 1 };
     let json_cwd = json.get("cwd").and_then(|v| v.as_str()).map(String::from);
+    let notification_type = json.get("notification_type").and_then(|v| v.as_str()).unwrap_or("");
+
+    // Skip auth_success — redundant, user just authenticated
+    if notification_type == "auth_success" { return 0; }
 
     let timer = match timer_read(&sid) { Some(t) => t, None => return 0 };
     let wt_pid: u32 = timer.get(1).and_then(|s| s.parse().ok()).unwrap_or(0);
     if wt_pid == 0 { return 0; } // IDE, skip
 
-    let cwd = timer.get(3).cloned().unwrap_or_default();
-    let dir = Path::new(if cwd.is_empty() { json_cwd.as_deref().unwrap_or_default() } else { &cwd })
-        .file_name().unwrap_or_default().to_string_lossy().to_string();
+    let cwd = json_cwd.as_deref()
+        .or(timer.get(3).map(|s| s.as_str())).unwrap_or_default();
+    // Prefer tab name (captured from WT title bar) over cwd basename
+    let dir = timer.get(5).filter(|s| !s.is_empty()).map(|s| s.to_string())
+        .unwrap_or_else(|| Path::new(cwd).file_name().unwrap_or_default().to_string_lossy().to_string());
 
     // Elapsed time since last user message
     let start_ms: u64 = timer.first().and_then(|s| s.parse().ok()).unwrap_or(0);
@@ -186,7 +215,11 @@ fn notify(hook_event: &str, base_dir: &Path, config: &Config) -> i32 {
     let message = if hook_event == "stop" {
         config.messages.as_ref().and_then(|m| m.stop.as_deref()).unwrap_or("Task completed")
     } else {
-        config.messages.as_ref().and_then(|m| m.notification.as_deref()).unwrap_or("Claude needs your input")
+        match notification_type {
+            "permission_prompt" => config.messages.as_ref().and_then(|m| m.permission.as_deref()).unwrap_or("Claude needs permission"),
+            "elicitation_dialog" => config.messages.as_ref().and_then(|m| m.elicitation.as_deref()).unwrap_or("Action required"),
+            _ => config.messages.as_ref().and_then(|m| m.notification.as_deref()).unwrap_or("Claude needs your input"),
+        }
     };
 
     let icon_file = if hook_event == "stop" {
@@ -231,7 +264,43 @@ r#"<toast launch="{focus}" activationType="protocol">
         elapsed = esc(&elapsed), icon = icon_xml, editor = editor_xml,
     );
 
-    show_toast(&xml, &sid)
+    let toast_result = show_toast(&xml, &sid);
+
+
+    // Send webhook after toast is shown (only when AFK)
+    // auth_success is already skipped above
+    // Guard: elapsed time must also exceed idle_minutes — can't be AFK longer
+    // than Claude has been running since the last user prompt.
+    if let Some(ref webhook) = config.webhook {
+        if let (Some(ref url), Some(ref payload_file)) = (&webhook.url, &webhook.payload) {
+            if !url.is_empty() && !payload_file.is_empty() {
+                let idle_minutes = webhook.idle_minutes.unwrap_or(15);
+                if s >= idle_minutes as u64 * 60 && is_afk(idle_minutes) {
+                    let url = url.clone();
+                    let template_path = base_dir.join(payload_file);
+                    let dir = dir.clone();
+                    let elapsed = elapsed.clone();
+                    let message = message.to_string();
+                    let event = hook_event.to_string();
+                    let ntype = notification_type.to_string();
+                    let handle = thread::spawn(move || {
+                        let vars = [
+                            ("title", dir.as_str()),
+                            ("message", message.as_str()),
+                            ("elapsed", elapsed.as_str()),
+                            ("project", dir.as_str()),
+                            ("event", event.as_str()),
+                            ("notification_type", ntype.as_str()),
+                        ];
+                        send_webhook(&url, &template_path, &vars);
+                    });
+                    let _ = handle.join();
+                }
+            }
+        }
+    }
+
+    toast_result
 }
 
 fn show_toast(xml_str: &str, sid: &str) -> i32 {
@@ -467,8 +536,22 @@ fn focus_terminal(wt_pid: u32, tab_rid: &str) {
                 if !tab_rid.is_empty() && rid != tab_rid { continue; }
 
                 let hwnd = HWND(win.CurrentNativeWindowHandle().unwrap_or_default().0);
-                let _ = ShowWindow(hwnd, SW_RESTORE);
+                if IsIconic(hwnd).as_bool() {
+                    // Only use ShowWindow for minimized — it's needed to restore.
+                    // For all other states (normal, maximized, snapped), skip
+                    // ShowWindow to preserve window geometry and snap layout.
+                    let _ = ShowWindow(hwnd, SW_RESTORE);
+                }
+                // Attach to foreground thread to bypass SetForegroundWindow restrictions
+                let fg = GetForegroundWindow();
+                let fg_thread = GetWindowThreadProcessId(fg, None);
+                let our_thread = GetCurrentThreadId();
+                let attached = fg_thread != 0 && fg_thread != our_thread
+                    && AttachThreadInput(our_thread, fg_thread, true).as_bool();
                 let _ = SetForegroundWindow(hwnd);
+                if attached {
+                    let _ = AttachThreadInput(our_thread, fg_thread, false);
+                }
 
                 if !tab_rid.is_empty() {
                     thread::sleep(Duration::from_millis(200));
@@ -633,6 +716,58 @@ where
         })
         .expect("failed to spawn STA thread")
         .join()
+}
+
+// ═══════════════════════════════════════
+// AFK detection
+// ═══════════════════════════════════════
+
+fn get_idle_seconds() -> u32 {
+    unsafe {
+        let mut lii = LASTINPUTINFO {
+            cbSize: size_of::<LASTINPUTINFO>() as u32,
+            dwTime: 0,
+        };
+        if GetLastInputInfo(&mut lii).as_bool() {
+            let now = GetTickCount();
+            (now - lii.dwTime) / 1000
+        } else {
+            0
+        }
+    }
+}
+
+fn is_session_locked() -> bool {
+    // Real lock detection needs WM_WTSSESSION_CHANGE events (message loop).
+    // Idle time in is_afk() covers the main use case.
+    false
+}
+
+fn is_afk(idle_minutes: u32) -> bool {
+    if is_session_locked() { return true; }
+    get_idle_seconds() >= idle_minutes * 60
+}
+
+// ═══════════════════════════════════════
+// Webhook
+// ═══════════════════════════════════════
+
+/// Sends a webhook by reading a JSON template file and substituting variables.
+/// Variables: {{title}}, {{message}}, {{elapsed}}, {{project}}, {{event}}
+fn send_webhook(url: &str, template_path: &Path, vars: &[(&str, &str)]) {
+    let Ok(mut template) = fs::read_to_string(template_path) else { return };
+
+    for (key, value) in vars {
+        template = template.replace(&format!("{{{{{key}}}}}"), value);
+    }
+
+    let agent = ureq::AgentBuilder::new()
+        .timeout(Duration::from_secs(10))
+        .build();
+
+    let _ = agent.post(url)
+        .set("Content-Type", "application/json")
+        .send_string(&template);
 }
 
 // ═══════════════════════════════════════

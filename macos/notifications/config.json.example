@@ -1,12 +1,20 @@
 {
+    "title": "CC Notification",
     "terminal": "ghostty",
     "editor": "zed",
     "messages": {
         "notification": "Claude needs your input",
+        "permission": "Claude needs permission",
+        "elicitation": "Action required",
         "stop": "Task completed"
     },
     "icons": {
         "notification": "icons/notification.png",
         "stop": "icons/stop.png"
+    },
+    "webhook": {
+        "url": "",
+        "idle_minutes": 15,
+        "payload": "webhook.json"
     }
 }

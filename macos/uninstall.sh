@@ -8,7 +8,12 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-EXE="$SCRIPT_DIR/notifications/bin/notifications"
+NOTIF_DIR="$SCRIPT_DIR/notifications"
+
+# Read title from config (default: "CC Notification")
+TITLE=$(python3 -c "import json; print(json.load(open('$NOTIF_DIR/config.json')).get('title', 'CC Notification'))" 2>/dev/null || echo "CC Notification")
+
+EXE="$NOTIF_DIR/bin/$TITLE.app/Contents/MacOS/notifications"
 
 if [[ -x "$EXE" ]]; then
     "$EXE" uninstall

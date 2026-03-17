@@ -1,4 +1,6 @@
 .build/
 bin/
 config.json
+webhook*.json
+!webhook*.json.example
 icons/

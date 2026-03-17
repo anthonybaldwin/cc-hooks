@@ -1,0 +1,6 @@
+{
+    "topic": "your-topic",
+    "title": "{{project}}",
+    "message": "{{message}} {{elapsed}}",
+    "priority": 3
+}

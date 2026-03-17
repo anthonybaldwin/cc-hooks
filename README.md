@@ -1,13 +1,10 @@
 # CC Hooks
 
-[Claude Code](https://claude.com/product/claude-code) notification [hooks](https://code.claude.com/docs/en/hooks) with terminal focus, elapsed time tracking, and editor integration.
+[Claude Code](https://claude.com/product/claude-code) [hooks](https://code.claude.com/docs/en/hooks)
 
 ## Platforms
 
-| Platform | Status |
-|----------|--------|
-| [Windows](windows/) | Available |
-| [macOS](macos/) | Beta |
-| Linux | Planned |
-
-See the platform directory for setup instructions.
+- [Windows](windows/)
+<!--   - [WSL]() -->
+- [macOS](macos/)
+<!-- - [Linux]() -->

@@ -1,5 +1,6 @@
-bin/
 config.json
+webhook*.json
+!webhook*.json.example
 icons/
 target/
 src/obj/

@@ -12,13 +12,11 @@
 
 $winDir = $PSScriptRoot
 $notifDir = Join-Path $winDir "notifications"
-$exe = Join-Path $notifDir "bin\notifications.exe"
+$exe = Join-Path $notifDir "target\release\notifications.exe"
 
 # Build
 Write-Host "Building..."
 cargo build --release --manifest-path (Join-Path $notifDir "Cargo.toml") 2>&1 | Select-Object -Last 3
-New-Item -ItemType Directory -Path (Join-Path $notifDir "bin") -Force | Out-Null
-Copy-Item (Join-Path $notifDir "target\release\notifications.exe") (Join-Path $notifDir "bin\notifications.exe") -Force
 
 # Copy config if it doesn't exist
 $configPath = Join-Path $notifDir "config.json"
