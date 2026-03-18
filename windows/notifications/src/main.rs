@@ -39,7 +39,7 @@ use std::time::Duration;
 use serde::Deserialize;
 use windows::core::*;
 use windows::Win32::System::SystemInformation::GetTickCount;
-use windows::Win32::UI::Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO};
+use windows::Win32::UI::Input::KeyboardAndMouse::*;
 use windows::Data::Xml::Dom::XmlDocument;
 use windows::UI::Notifications::*;
 use windows::Win32::Foundation::*;
@@ -157,29 +157,36 @@ fn on_submit(_base_dir: &Path) -> i32 {
 
     let cwd = json.get("cwd").and_then(|v| v.as_str()).map(String::from)
         .unwrap_or_else(|| env::current_dir().unwrap_or_default().to_string_lossy().to_string());
+
+    // Extract project root from transcript_path:
+    // ~/.claude/projects/C--Users-antho-Repos-cc-hooks/session.jsonl
+    // The directory name after "projects/" encodes path separators as -.
+    let transcript_path = json.get("transcript_path").and_then(|v| v.as_str()).unwrap_or("");
+    let project_root = extract_project_root(transcript_path).unwrap_or_else(|| cwd.clone());
+
     let ts = now_ms();
 
     let (wt_pid, claude_pid) = find_ancestors();
     if wt_pid == 0 { return 0; } // Not in Windows Terminal (IDE like Zed)
 
-    // Find selected tab on STA thread (UI Automation requires COM STA)
+    // Find selected tab + focused pane on STA thread (UI Automation requires COM STA)
     let wt = wt_pid;
-    let (tab_rid, tab_name) = run_on_sta(move || find_selected_tab(wt))
-        .map(|(rid, raw)| {
+    let (tab_rid, tab_name, pane_rid) = run_on_sta(move || find_selected_tab(wt))
+        .map(|(rid, raw, pane)| {
             // Strip spinner characters (braille patterns U+2800..U+28FF) from tab title
             let name = raw.trim_start_matches(|c: char| ('\u{2800}'..='\u{28FF}').contains(&c) || c == ' ').to_string();
-            (rid, name)
+            (rid, name, pane)
         })
         .unwrap_or_default();
 
-    // Save session state: timestamp|wtPid|claudePid|cwd|tabRuntimeId|tabName
-    timer_write(&sid, &format!("{ts}|{wt_pid}|{claude_pid}|{cwd}|{tab_rid}|{tab_name}"));
+    // Save session state: timestamp|wtPid|claudePid|cwd|tabRuntimeId|tabName|projectRoot|paneRuntimeId
+    timer_write(&sid, &format!("{ts}|{wt_pid}|{claude_pid}|{cwd}|{tab_rid}|{tab_name}|{project_root}|{pane_rid}"));
 
     // Save our PID so the next on-submit call can kill us
     let _ = fs::write(watcher_pid_path(&sid), std::process::id().to_string());
 
     // Run watcher loop (async: true on hook means Claude won't wait)
-    watch_for_trigger(&sid, wt_pid, claude_pid, &tab_rid);
+    watch_for_trigger(&sid, wt_pid, claude_pid, &tab_rid, &tab_name, &pane_rid);
 
     0
 }
@@ -205,9 +212,38 @@ fn notify(hook_event: &str, base_dir: &Path, config: &Config) -> i32 {
     let wt_pid: u32 = timer.get(1).and_then(|s| s.parse().ok()).unwrap_or(0);
     if wt_pid == 0 { return 0; } // IDE, skip
 
-    let cwd = json_cwd.as_deref()
-        .or(timer.get(3).map(|s| s.as_str())).unwrap_or_default();
-    let dir = Path::new(cwd).file_name().unwrap_or_default().to_string_lossy().to_string();
+    let timer_cwd = timer.get(3).map(|s| s.as_str()).unwrap_or_default();
+    // Try transcript_path from notify JSON first (on-submit may not receive it)
+    let transcript_path = json.get("transcript_path").and_then(|v| v.as_str()).unwrap_or("");
+    let timer_root = timer.get(6).map(|s| s.as_str()).unwrap_or_default();
+    let project_root_owned = extract_project_root(transcript_path)
+        .unwrap_or_else(|| if timer_root.is_empty() {
+            json_cwd.clone().unwrap_or_default()
+        } else {
+            timer_root.to_string()
+        });
+    let project_root = project_root_owned.as_str();
+
+    // Display: show relative path from project root (e.g. "cc-hooks/src/lib")
+    // Normalize to backslashes for consistent comparison on Windows
+    let display_cwd = json_cwd.as_deref().unwrap_or(timer_cwd);
+    let norm_cwd = display_cwd.replace('/', "\\");
+    let norm_root = project_root.replace('/', "\\");
+    let dir = if !norm_root.is_empty() && norm_cwd.starts_with(&norm_root) {
+        let root_name = Path::new(project_root).file_name().unwrap_or_default().to_string_lossy();
+        let relative = &norm_cwd[norm_root.len()..];
+        if relative.is_empty() || relative == "\\" {
+            root_name.to_string()
+        } else {
+            let trimmed = relative.trim_start_matches(['/', '\\']);
+            format!("{root_name}/{}", trimmed.replace('\\', "/"))
+        }
+    } else {
+        Path::new(display_cwd).file_name().unwrap_or_default().to_string_lossy().to_string()
+    };
+
+    // Editor always opens at project root
+    let editor_cwd = if project_root.is_empty() { display_cwd } else { project_root };
 
     // Elapsed time since last user message
     let start_ms: u64 = timer.first().and_then(|s| s.parse().ok()).unwrap_or(0);
@@ -246,7 +282,7 @@ fn notify(hook_event: &str, base_dir: &Path, config: &Config) -> i32 {
     let focus_uri = format!("claude-focus://{sid}");
     let (editor_uri, editor_label) = match config.editor.as_deref() {
         Some(ed) if !ed.is_empty() => (
-            format!("claude-editor://{}", cwd.replace('\\', "/")),
+            format!("claude-editor://{}", editor_cwd.replace('\\', "/")),
             format!("Open in {}{}", ed[..1].to_uppercase(), &ed[1..]),
         ),
         _ => (String::new(), String::new()),
@@ -501,9 +537,11 @@ fn open_editor(uri: &str, config: &Config) -> i32 {
 // Exits when WT or Claude process dies. Debounces within 2 seconds.
 // ═══════════════════════════════════════
 
-fn watch_for_trigger(sid: &str, wt_pid: u32, claude_pid: u32, tab_rid: &str) {
+fn watch_for_trigger(sid: &str, wt_pid: u32, claude_pid: u32, tab_rid: &str, tab_name: &str, pane_rid: &str) {
     let sid = sid.to_string();
     let tab_rid = tab_rid.to_string();
+    let tab_name = tab_name.to_string();
+    let pane_rid = pane_rid.to_string();
 
     // Run on STA thread (required for UI Automation COM calls)
     let _ = run_on_sta(move || {
@@ -528,7 +566,7 @@ fn watch_for_trigger(sid: &str, wt_pid: u32, claude_pid: u32, tab_rid: &str) {
                 if now - last_focus < 2000 { thread::sleep(Duration::from_millis(200)); continue; }
                 last_focus = now;
 
-                focus_terminal(wt_pid, &tab_rid);
+                focus_terminal(wt_pid, &tab_rid, &tab_name, &pane_rid);
             }
 
             thread::sleep(Duration::from_millis(200));
@@ -536,7 +574,7 @@ fn watch_for_trigger(sid: &str, wt_pid: u32, claude_pid: u32, tab_rid: &str) {
     });
 }
 
-fn focus_terminal(wt_pid: u32, tab_rid: &str) {
+fn focus_terminal(wt_pid: u32, tab_rid: &str, _tab_name: &str, _pane_rid: &str) {
     unsafe {
         let Ok(auto) = create_automation() else { return };
         let Ok(root) = auto.GetRootElement() else { return };
@@ -544,52 +582,61 @@ fn focus_terminal(wt_pid: u32, tab_rid: &str) {
         let Ok(pid_cond) = auto.CreatePropertyCondition(
             UIA_ProcessIdPropertyId, &VARIANT::from(wt_pid as i32),
         ) else { return };
-        let Ok(tab_cond) = auto.CreatePropertyCondition(
-            UIA_ControlTypePropertyId, &VARIANT::from(UIA_TabItemControlTypeId.0),
-        ) else { return };
 
         let Ok(windows) = root.FindAll(TreeScope_Children, &pid_cond) else { return };
-        for i in 0..windows.Length().unwrap_or(0) {
-            let Ok(win) = windows.GetElement(i) else { continue };
-            let Ok(tabs) = win.FindAll(TreeScope_Descendants, &tab_cond) else { continue };
+        let win = (0..windows.Length().unwrap_or(0))
+            .filter_map(|i| windows.GetElement(i).ok())
+            .next();
+        let Some(win) = win else { return };
 
-            for j in 0..tabs.Length().unwrap_or(0) {
-                let Ok(tab) = tabs.GetElement(j) else { continue };
+        let hwnd = HWND(win.CurrentNativeWindowHandle().unwrap_or_default().0);
+        if IsIconic(hwnd).as_bool() {
+            let _ = ShowWindow(hwnd, SW_RESTORE);
+        }
 
-                let rid = get_runtime_id(&tab);
-                if !tab_rid.is_empty() && rid != tab_rid { continue; }
+        // Grant WT permission to take foreground (we have rights from toast click)
+        let _ = AllowSetForegroundWindow(wt_pid);
 
-                let hwnd = HWND(win.CurrentNativeWindowHandle().unwrap_or_default().0);
-                if IsIconic(hwnd).as_bool() {
-                    // Only use ShowWindow for minimized — it's needed to restore.
-                    // For all other states (normal, maximized, snapped), skip
-                    // ShowWindow to preserve window geometry and snap layout.
-                    let _ = ShowWindow(hwnd, SW_RESTORE);
-                }
-                // Attach to foreground thread to bypass SetForegroundWindow restrictions
-                let fg = GetForegroundWindow();
-                let fg_thread = GetWindowThreadProcessId(fg, None);
-                let our_thread = GetCurrentThreadId();
-                let attached = fg_thread != 0 && fg_thread != our_thread
-                    && AttachThreadInput(our_thread, fg_thread, true).as_bool();
-                let _ = SetForegroundWindow(hwnd);
-                if attached {
-                    let _ = AttachThreadInput(our_thread, fg_thread, false);
-                }
+        // Alt key trick: satisfy foreground lock for SetForegroundWindow
+        keybd_event(VK_MENU.0 as u8, 0x45, KEYEVENTF_EXTENDEDKEY, 0);
+        keybd_event(VK_MENU.0 as u8, 0x45, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP, 0);
+        let _ = SetForegroundWindow(hwnd);
 
-                if !tab_rid.is_empty() {
-                    thread::sleep(Duration::from_millis(200));
+        // Select tab by RuntimeId with retry
+        if !tab_rid.is_empty() {
+            let Ok(tab_cond) = auto.CreatePropertyCondition(
+                UIA_ControlTypePropertyId, &VARIANT::from(UIA_TabItemControlTypeId.0),
+            ) else { return };
+            let Ok(tabs) = win.FindAll(TreeScope_Descendants, &tab_cond) else { return };
+
+            for attempt in 0..3 {
+                if attempt > 0 { thread::sleep(Duration::from_millis(100)); }
+                for j in 0..tabs.Length().unwrap_or(0) {
+                    let Ok(tab) = tabs.GetElement(j) else { continue };
+                    if get_runtime_id(&tab) != tab_rid { continue; }
                     if let Ok(pattern) = tab.GetCurrentPattern(UIA_SelectionItemPatternId) {
                         if let Ok(sip) = pattern.cast::<IUIAutomationSelectionItemPattern>() {
                             let _ = sip.Select();
+                            thread::sleep(Duration::from_millis(50));
+                            if sip.CurrentIsSelected().unwrap_or(BOOL::from(false)).as_bool() {
+                                break;
+                            }
                         }
                     }
                 }
-                return;
+                // Re-enumerate tabs in case they shifted
+                // (tabs added/removed between on-submit and focus)
             }
         }
+
+        // Use WT CLI to push keyboard focus into the active pane.
+        let _ = std::process::Command::new("wt.exe")
+            .args(["-w", "0", "move-focus", "first"])
+            .spawn();
     }
 }
+
+
 
 // ═══════════════════════════════════════
 // Process helpers
@@ -671,7 +718,45 @@ fn create_automation() -> windows::core::Result<IUIAutomation> {
     unsafe { CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER) }
 }
 
-fn find_selected_tab(wt_pid: u32) -> (String, String) {
+/// Finds the focused pane (TermControl) within a tab and returns its RuntimeId.
+fn find_focused_pane(auto: &IUIAutomation, tab: &IUIAutomationElement) -> String {
+    unsafe {
+        // TermControl elements are Custom control type descendants of the tab
+        let Ok(custom_cond) = auto.CreatePropertyCondition(
+            UIA_ControlTypePropertyId, &VARIANT::from(UIA_CustomControlTypeId.0),
+        ) else { return String::new() };
+
+        let Ok(descendants) = tab.FindAll(TreeScope_Descendants, &custom_cond) else {
+            return String::new()
+        };
+
+        // Find the one with keyboard focus, or fall back to first one with TextPattern
+        let mut first_text_rid = String::new();
+        for i in 0..descendants.Length().unwrap_or(0) {
+            let Ok(el) = descendants.GetElement(i) else { continue };
+
+            // Check if this element supports TextPattern (TermControl does)
+            let has_text = el.GetCurrentPattern(UIA_TextPatternId).is_ok();
+            if !has_text { continue; }
+
+            let rid = get_runtime_id(&el);
+            if first_text_rid.is_empty() {
+                first_text_rid = rid.clone();
+            }
+
+            // Check if this pane has keyboard focus
+            if el.CurrentHasKeyboardFocus().unwrap_or(BOOL::from(false)).as_bool() {
+                return rid;
+            }
+        }
+
+        // If no pane has focus (single pane case), return the first TermControl
+        first_text_rid
+    }
+}
+
+/// Returns (tabRuntimeId, tabName, paneRuntimeId) for the selected tab.
+fn find_selected_tab(wt_pid: u32) -> (String, String, String) {
     unsafe {
         let Ok(auto) = create_automation() else { return Default::default() };
         let Ok(root) = auto.GetRootElement() else { return Default::default() };
@@ -695,7 +780,8 @@ fn find_selected_tab(wt_pid: u32) -> (String, String) {
                         if sip.CurrentIsSelected().unwrap_or(BOOL::from(false)).as_bool() {
                             let rid = get_runtime_id(&tab);
                             let name = tab.CurrentName().map(|n| n.to_string()).unwrap_or_default();
-                            return (rid, name);
+                            let pane_rid = find_focused_pane(&auto, &tab);
+                            return (rid, name, pane_rid);
                         }
                     }
                 }
@@ -803,7 +889,7 @@ fn send_webhook(url: &str, template_path: &Path, vars: &[(&str, &str)]) {
 fn timer_path(sid: &str) -> PathBuf { env::temp_dir().join(format!("claude-timer-{sid}.txt")) }
 fn timer_write(sid: &str, data: &str) { let _ = fs::write(timer_path(sid), data); }
 fn timer_read(sid: &str) -> Option<Vec<String>> {
-    fs::read_to_string(timer_path(sid)).ok().map(|s| s.splitn(6, '|').map(String::from).collect())
+    fs::read_to_string(timer_path(sid)).ok().map(|s| s.splitn(8, '|').map(String::from).collect())
 }
 fn timer_delete(sid: &str) { let _ = fs::remove_file(timer_path(sid)); }
 
@@ -820,6 +906,52 @@ fn watcher_pid_delete(sid: &str) { let _ = fs::remove_file(watcher_pid_path(sid)
 // ═══════════════════════════════════════
 // Misc helpers
 // ═══════════════════════════════════════
+
+/// Extracts the project root from Claude Code's transcript_path.
+/// Path format: ~/.claude/projects/C--Users-antho-Repos-cc-hooks/session.jsonl
+/// The directory name after "projects/" encodes the path with C- prefix and - as separator.
+/// Greedily resolves against the filesystem to handle dashes in directory names.
+fn extract_project_root(transcript_path: &str) -> Option<String> {
+    let encoded = transcript_path.split("/projects/").nth(1)?
+        .split('/').next()?;
+    if encoded.is_empty() { return None; }
+
+    // Windows: "C--Users-antho-Repos-cc-hooks" → "C:\Users\antho\Repos\cc-hooks"
+    // The first segment is the drive letter (e.g., "C-")
+    let segments: Vec<&str> = encoded.split('-').collect();
+    if segments.is_empty() { return None; }
+
+    // First segment should be drive letter
+    let drive = segments[0];
+    if drive.is_empty() || drive.len() > 1 { return None; }
+    let mut path = format!("{}:\\", drive);
+    let mut i = 1;
+    // Skip empty segment after "C-" (the leading - after drive)
+    if i < segments.len() && segments[i].is_empty() { i += 1; }
+
+    while i < segments.len() {
+        // Greedily try longest match first
+        let mut best = String::new();
+        let mut best_j = i;
+        for j in (i..segments.len()).rev() {
+            let candidate = segments[i..=j].join("-");
+            let test_path = Path::new(&path).join(&candidate);
+            if test_path.exists() {
+                best = candidate;
+                best_j = j + 1;
+                break;
+            }
+        }
+        if best.is_empty() {
+            best = segments[i].to_string();
+            best_j = i + 1;
+        }
+        path = Path::new(&path).join(&best).to_string_lossy().to_string();
+        i = best_j;
+    }
+
+    if Path::new(&path).exists() { Some(path) } else { None }
+}
 
 fn read_stdin() -> Option<serde_json::Value> {
     let mut buf = String::new();

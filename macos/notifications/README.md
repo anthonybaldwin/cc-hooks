@@ -71,11 +71,11 @@ Copy `config.json.example` to `config.json` and edit:
     },
     "icons": {
         "app": "icons/AppIcon.png",
-        "notification": "icons/clawd.png",
-        "permission": "icons/clawd.png",
-        "elicitation": "icons/clawd.png",
-        "idle": "icons/clawd.png",
-        "stop": "icons/clawd-happy.png"
+        "notification": "icons/notification.png",
+        "permission": "icons/notification.png",
+        "elicitation": "icons/notification.png",
+        "idle": "icons/notification.png",
+        "stop": "icons/stop.png"
     },
     "webhook": {
         "enabled": true,
