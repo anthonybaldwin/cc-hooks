@@ -10,12 +10,12 @@ Tint the terminal background by [Claude Code](https://claude.com/product/claude-
 |-------|-------|----------|
 | 🟡 **working** | amber | `UserPromptSubmit`, `PostToolUse`, `PostToolUseFailure`, `ElicitationResult` |
 | 🔴 **needs you** | red | `PermissionRequest`, `Elicitation` |
-| 🔵 **done / idle** | subtle blue | `Stop`, `Notification` |
+| 🟢 **done / idle** | green | `Stop` |
 | ⬛ **reset** | default | `SessionStart`, `SessionEnd` |
 
 It flips **back** to amber after a red prompt (via `PostToolUse`), so a session that asked for permission mid-task doesn't get stuck looking like it still needs you.
 
-Red is reserved for *actual* blocking decisions (`PermissionRequest`, `Elicitation`). `Notification` maps to the calm blue instead of red, because it also fires when a session simply goes idle after finishing — coloring that red would cry wolf and drown out the sessions that genuinely need you.
+Red is reserved for *actual* blocking decisions (`PermissionRequest`, `Elicitation`). The `Notification` event is deliberately left unwired: it fires for `permission_prompt`, `idle_prompt`, `elicitation_*`, and `auth_success` — every one already covered by a more specific event above. In particular `idle_prompt` (idle ~60s after finishing) would just repaint an already-green session, so coloring on `Notification` adds nothing but conflicts.
 
 ## How it works
 
@@ -53,7 +53,7 @@ Edit the hex values at the top of `session-color.sh` (then re-run `install.sh se
 case "$1" in
   working) seq='\033]11;#574515\007' ;;   # amber — working
   needs)   seq='\033]11;#501d22\007' ;;   # red   — needs you (blocking)
-  done)    seq='\033]11;#1e3050\007' ;;   # subtle blue — done / idle
+  done)    seq='\033]11;#233f20\007' ;;   # green — done / idle
   reset|*) seq='\033]111\007'        ;;   # reset bg to terminal default
 esac
 ```
