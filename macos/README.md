@@ -10,14 +10,16 @@
 ```bash
 cd macos
 bash install.sh                # install all hooks
-bash install.sh notifications  # install a specific hook
+bash install.sh notifications  # or install a specific hook
+bash install.sh session-color
 ```
 
 ## Uninstall
 
 ```bash
 bash uninstall.sh                # uninstall all hooks
-bash uninstall.sh notifications  # uninstall a specific hook
+bash uninstall.sh notifications  # or uninstall a specific hook
+bash uninstall.sh session-color
 ```
 
 ## Hooks
