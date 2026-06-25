@@ -33,7 +33,7 @@ MAPPING = {
     "PostToolUse":        "working",
     "PostToolUseFailure": "working",
     "ElicitationResult":  "working",
-    "Notification":       "needs",
+    "Notification":       "done",
     "PermissionRequest":  "needs",
     "Elicitation":        "needs",
     "Stop":               "done",

@@ -15,16 +15,20 @@
 # States (wired into ~/.claude/settings.json by install.sh):
 #   working  amber   -> UserPromptSubmit, PostToolUse, PostToolUseFailure,
 #                       ElicitationResult            (Claude is busy; you wait)
-#   needs    red     -> Notification, PermissionRequest, Elicitation
-#                                                    (blocked: Claude needs you)
-#   done     green   -> Stop                         (turn finished; your move)
+#   needs    red     -> PermissionRequest, Elicitation
+#                                          (blocked: Claude needs a decision)
+#   done     blue    -> Stop, Notification (finished / idle; your move)
 #   reset    default -> SessionStart, SessionEnd
+#
+# Note: Notification maps to "done", not "needs" — it also fires when a session
+# goes idle after finishing, so red there would cry wolf. The real blocking
+# cases (PermissionRequest, Elicitation) are what stay red.
 #
 # Tweak the hex values below; dim tints keep text readable across the pane.
 case "$1" in
   working) seq='\033]11;#574515\007' ;;   # amber — working
-  needs)   seq='\033]11;#501d22\007' ;;   # red   — needs you
-  done)    seq='\033]11;#233f20\007' ;;   # green — your move
+  needs)   seq='\033]11;#501d22\007' ;;   # red   — needs you (blocking)
+  done)    seq='\033]11;#1e3050\007' ;;   # subtle blue — done / idle
   reset|*) seq='\033]111\007'        ;;   # reset bg to terminal default
 esac
 
