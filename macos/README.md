@@ -25,3 +25,4 @@ bash uninstall.sh notifications  # uninstall a specific hook
 | Hook | Description |
 |------|-------------|
 | [notifications/](notifications/) | Desktop notifications with elapsed time, terminal focus, and editor integration |
+| [session-color/](session-color/) | Tints the terminal background by session status — working (amber), needs you (red), done (green) |

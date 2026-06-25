@@ -1,0 +1,46 @@
+#!/bin/sh
+# CC Hooks — session-color
+#
+# Tint the terminal background by Claude Code session status, via OSC 11.
+# Pure hooks: no launcher, no per-session theme files. Works in /tui fullscreen
+# too — Claude inherits the terminal background rather than painting opaque
+# cells, so an OSC 11 change to the pane's background shows through.
+#
+# THE CATCH this solves: hooks run WITHOUT a controlling terminal, so a naive
+# `> /dev/tty` fails ("Device not configured") and the color never lands.
+# Instead we walk up the process tree to the Claude process and write the escape
+# to its real tty device (e.g. /dev/ttys003) — the terminal pane's pty. That
+# makes the tint per-pane, so concurrent sessions never clobber each other.
+#
+# States (wired into ~/.claude/settings.json by install.sh):
+#   working  amber   -> UserPromptSubmit, PostToolUse, PostToolUseFailure,
+#                       ElicitationResult            (Claude is busy; you wait)
+#   needs    red     -> Notification, PermissionRequest, Elicitation
+#                                                    (blocked: Claude needs you)
+#   done     green   -> Stop                         (turn finished; your move)
+#   reset    default -> SessionStart, SessionEnd
+#
+# Tweak the hex values below; dim tints keep text readable across the pane.
+case "$1" in
+  working) seq='\033]11;#574515\007' ;;   # amber — working
+  needs)   seq='\033]11;#501d22\007' ;;   # red   — needs you
+  done)    seq='\033]11;#233f20\007' ;;   # green — your move
+  reset|*) seq='\033]111\007'        ;;   # reset bg to terminal default
+esac
+
+# Resolve the controlling tty by walking up the process tree until we hit a
+# process attached to a real terminal device.
+tty_dev=""
+pid=$$
+while [ -n "$pid" ] && [ "$pid" -gt 1 ] 2>/dev/null; do
+  t=$(ps -o tty= -p "$pid" 2>/dev/null | tr -d ' ')
+  case "$t" in
+    ttys*|tty*|pts*) tty_dev="/dev/$t"; break ;;
+  esac
+  pid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
+done
+
+# Fall back to /dev/tty if the walk found nothing (e.g. run interactively).
+[ -z "$tty_dev" ] && tty_dev="/dev/tty"
+
+printf "$seq" > "$tty_dev" 2>/dev/null || true
