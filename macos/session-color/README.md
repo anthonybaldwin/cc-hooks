@@ -2,6 +2,10 @@
 
 Tint the terminal background by [Claude Code](https://claude.com/product/claude-code) session status, so you can tell at a glance — across a wall of panes — which session is working, which needs you, and which is done.
 
+<img width="30%" alt="CleanShot 2026-06-25 at 11 47 51" src="https://github.com/user-attachments/assets/ed8736db-05dd-4cb4-8418-e60c32ea8f3b" /> 
+<img width="30%" alt="CleanShot 2026-06-25 at 11 49 41" src="https://github.com/user-attachments/assets/cde1bc8e-248f-456c-b5f4-57f06c34f78d" />
+<img width="30%" alt="CleanShot 2026-06-25 at 11 47 55" src="https://github.com/user-attachments/assets/48705014-a675-432c-9d19-d19f253e2a1c" />
+
 | State | Color | Fires on |
 |-------|-------|----------|
 | 🟡 **working** | amber | `UserPromptSubmit`, `PostToolUse`, `PostToolUseFailure`, `ElicitationResult` |
