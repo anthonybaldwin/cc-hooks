@@ -2,6 +2,9 @@
 
 macOS desktop notifications for [Claude Code](https://claude.com/product/claude-code) using native macOS APIs.
 
+<img width="360" height="164" alt="CleanShot 2026-06-25 at 11 41 22" src="https://github.com/user-attachments/assets/2440aaf1-2743-44ac-ac4e-996badfce202" /> <br>
+<img width="352" height="90" alt="CleanShot 2026-06-25 at 11 41 35" src="https://github.com/user-attachments/assets/54159d33-c3ca-4719-9058-f265e70014fe" />
+
 ## Why not just use...
 
 **[Built-in terminal notifications](https://code.claude.com/docs/en/terminal-config#notification-setup)?** [Ghostty](https://ghostty.org/) notifications from a split pane [open a new window](https://github.com/ghostty-org/ghostty/discussions/10445) instead of focusing the originating pane. [WezTerm](https://wezfurlong.org/wezterm/) clicking only brings the window to the foreground — not the tab or pane. [iTerm2](https://iterm2.com/)'s built-in notifications focus the correct pane but don't offer elapsed time or editor integration.
