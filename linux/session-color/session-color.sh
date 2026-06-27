@@ -1,16 +1,16 @@
 #!/bin/sh
-# CC Hooks — session-color (Linux)
+# CC Hooks — session-color (Linux, tmux-aware)
 #
-# Tint the terminal background by Claude Code session status, via OSC 11.
-# Pure hooks: no launcher, no per-session theme files. Works in /tui fullscreen
-# too — Claude inherits the terminal background rather than painting opaque
-# cells, so an OSC 11 change to the pane's background shows through.
+# Tint the terminal background by Claude Code session status.
 #
-# THE CATCH this solves: hooks run WITHOUT a controlling terminal, so a naive
-# `> /dev/tty` fails ("No such device or address") and the color never lands.
-# Instead we walk up the process tree to the Claude process and write the escape
-# to its real tty device (e.g. /dev/pts/3) — the terminal pane's pty. That makes
-# the tint per-pane, so concurrent sessions never clobber each other.
+# Inside tmux we color the pane natively with `select-pane -P bg=...`. tmux
+# intercepts raw OSC 11 escapes, so writing them to the pane's pty is
+# unreliable — the native pane style is the tmux-friendly path, and it's
+# per-pane, so concurrent sessions in other panes are never touched.
+#
+# Outside tmux we fall back to a single OSC 11 escape written to the pane's
+# real tty (resolved by walking up the process tree, since hooks run without a
+# controlling terminal).
 #
 # States (wired into ~/.claude/settings.json by install.sh):
 #   working  amber   -> UserPromptSubmit, PostToolUse, PostToolUseFailure,
@@ -20,24 +20,17 @@
 #   done     green   -> Stop               (turn finished / idle; your move)
 #   reset    default -> SessionStart, SessionEnd
 #
-# Note: Notification is intentionally NOT wired. It fires for permission_prompt,
-# idle_prompt, elicitation_*, and auth_success — every one already covered by a
-# more specific event above (PermissionRequest, Elicitation, ElicitationResult,
-# Stop). Coloring on it only double-paints; idle_prompt in particular would
-# repaint an already-finished (green) session for no reason.
-#
 # Tweak the hex values below; dim tints keep text readable across the pane.
 case "$1" in
-  working) seq='\033]11;#574515\007' ;;   # amber — working
-  needs)   seq='\033]11;#501d22\007' ;;   # red   — needs you (blocking)
-  done)    seq='\033]11;#233f20\007' ;;   # green — done / idle, your move
-  reset|*) seq='\033]111\007'        ;;   # reset bg to terminal default
+  working) col='#574515' ;;   # amber — working
+  needs)   col='#501d22' ;;   # red   — needs you (blocking)
+  done)    col='#233f20' ;;   # green — done / idle, your move
+  reset|*) col='default' ;;   # reset bg to terminal/tmux default
 esac
 
-# Resolve the controlling tty by walking up the process tree until we hit a
-# process attached to a real terminal device. On Linux `ps -o tty=` reports the
-# tty without the /dev prefix (e.g. "pts/3"); "?" means no tty, so we keep
-# climbing toward the shell/Claude process that owns the pane's pty.
+# Resolve the pane's tty by walking up the process tree until we hit a process
+# attached to a real terminal device. On Linux `ps -o tty=` reports the tty
+# without the /dev prefix (e.g. "pts/3"); "?" means no tty, so we keep climbing.
 tty_dev=""
 pid=$$
 while [ -n "$pid" ] && [ "$pid" -gt 1 ] 2>/dev/null; do
@@ -48,7 +41,21 @@ while [ -n "$pid" ] && [ "$pid" -gt 1 ] 2>/dev/null; do
   pid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
 done
 
-# Fall back to /dev/tty if the walk found nothing (e.g. run interactively).
-[ -z "$tty_dev" ] && tty_dev="/dev/tty"
+# Inside tmux: color the matching pane natively. Map our tty to a pane id so we
+# only touch this session's pane.
+if [ -n "$TMUX" ] && command -v tmux >/dev/null 2>&1 && [ -n "$tty_dev" ]; then
+  pane=$(tmux list-panes -a -F '#{pane_tty} #{pane_id}' 2>/dev/null \
+         | awk -v t="$tty_dev" '$1 == t { print $2; exit }')
+  if [ -n "$pane" ]; then
+    tmux select-pane -t "$pane" -P "bg=$col" 2>/dev/null || true
+    exit 0
+  fi
+fi
 
-printf "$seq" > "$tty_dev" 2>/dev/null || true
+# Outside tmux (or pane not found): OSC 11 to the pane's tty.
+[ -z "$tty_dev" ] && tty_dev="/dev/tty"
+if [ "$col" = "default" ]; then
+  printf '\033]111\007' > "$tty_dev" 2>/dev/null || true
+else
+  printf '\033]11;%s\007' "$col" > "$tty_dev" 2>/dev/null || true
+fi

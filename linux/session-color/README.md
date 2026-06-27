@@ -17,8 +17,9 @@ Red is reserved for *actual* blocking decisions (`PermissionRequest`, `Elicitati
 
 The tint is a single [OSC 11](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Operating-System-Commands) escape (`ESC ] 11 ; #rrggbb BEL`) written to the terminal. Two things make it work where a naive approach fails:
 
-- **Fullscreen-safe.** In `/tui fullscreen` Claude draws on the alternate screen but inherits the terminal's background rather than painting opaque cells, so an OSC 11 background change shows through, on terminals that honor OSC 11 under the alt-screen.
-- **It finds the right tty.** Hooks run **without a controlling terminal**, so `printf ... > /dev/tty` fails and the color silently never lands. Instead the script walks up the process tree to the Claude process and writes to its real tty device (the pane's pty, e.g. `/dev/pts/3`). Because that device is per-pane, concurrent sessions never clobber each other's color.
+- **It finds the right tty.** Hooks run **without a controlling terminal**, so `printf ... > /dev/tty` fails and the color silently never lands. Instead the script walks up the process tree to the Claude process to find its real tty device (the pane's pty, e.g. `/dev/pts/3`). Everything is keyed off that pty, so the tint is per-pane and concurrent sessions never clobber each other's color.
+- **tmux-aware.** Inside tmux, raw OSC 11 escapes get intercepted by tmux and don't reliably reach the pane, so the script maps the resolved pty to its tmux pane id and colors it natively with `tmux select-pane -P bg=…`. Outside tmux it falls back to an OSC 11 escape written to the pty.
+- **Fullscreen-safe.** In `/tui fullscreen` Claude draws on the alternate screen but inherits the background rather than painting opaque cells, so the tint (tmux pane style or OSC 11) shows through.
 
 ## Setup
 
@@ -31,7 +32,8 @@ This copies `session-color.sh` to `~/.claude/hooks/` and registers the hooks in 
 
 ### Requirements
 
-- A terminal that honors OSC 11 background changes (and, for `/tui`, under the alternate screen). Most modern emulators do (e.g. GNOME Terminal/VTE, Kitty, Alacritty, WezTerm, Ghostty); `xterm` honors OSC 11 but not under the alt-screen.
+- Under **tmux**, nothing special — coloring uses `select-pane` (tmux 2.1+; hex colors need 2.2+).
+- Otherwise, a terminal that honors OSC 11 background changes (and, for `/tui`, under the alternate screen). Most modern emulators do (e.g. GNOME Terminal/VTE, Kitty, Alacritty, WezTerm, Ghostty); `xterm` honors OSC 11 but not under the alt-screen.
 - `python3` (used by the installer to edit `settings.json`).
 
 ### Uninstall
