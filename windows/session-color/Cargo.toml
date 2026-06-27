@@ -1,0 +1,23 @@
+[package]
+name = "session-color"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde_json = "1"
+
+[dependencies.windows]
+version = "0.61"
+features = [
+    "Win32_Foundation",
+    "Win32_Security",                    # SECURITY_ATTRIBUTES (CreateFileW signature)
+    "Win32_Storage_FileSystem",          # CreateFileW, WriteFile
+    "Win32_System_IO",                   # OVERLAPPED (WriteFile signature)
+    "Win32_System_Console",              # AttachConsole, FreeConsole
+    "Win32_System_Diagnostics_ToolHelp", # process snapshot
+]
+
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true

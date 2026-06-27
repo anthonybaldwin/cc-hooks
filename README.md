@@ -7,4 +7,4 @@
 - [Windows](windows/)
 <!--   - [WSL]() -->
 - [macOS](macos/)
-<!-- - [Linux]() -->
+- [Linux](linux/)

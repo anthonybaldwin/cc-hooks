@@ -11,15 +11,17 @@
 cd windows
 pwsh -NoProfile -File install.ps1                # install all hooks
 pwsh -NoProfile -File install.ps1 notifications  # install a specific hook
+pwsh -NoProfile -File install.ps1 session-color
 ```
 
-A UAC prompt will appear for the notification icon/title registry entry. Declining still works — just no icon on toasts.
+A UAC prompt will appear (notifications only) for the notification icon/title registry entry. Declining still works — just no icon on toasts.
 
 ## Uninstall
 
 ```powershell
 pwsh -NoProfile -File uninstall.ps1                # uninstall all hooks
 pwsh -NoProfile -File uninstall.ps1 notifications  # uninstall a specific hook
+pwsh -NoProfile -File uninstall.ps1 session-color
 ```
 
 ## Hooks
@@ -27,3 +29,4 @@ pwsh -NoProfile -File uninstall.ps1 notifications  # uninstall a specific hook
 | Hook | Description |
 |------|-------------|
 | [notifications/](notifications/) | Desktop notifications with elapsed time, terminal focus, and editor integration |
+| [session-color/](session-color/) | Status-driven terminal background tint (working / needs you / done) |
