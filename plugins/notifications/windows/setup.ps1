@@ -43,7 +43,7 @@ if ($Uninstall) {
 
     foreach ($proto in @("claude-focus", "claude-editor")) {
         $key = "HKCU:\Software\Classes\$proto"
-        if (Test-Path $key) { Remove-Item $key -Recurse -Force; Write-Host "Unregistered $proto://" }
+        if (Test-Path $key) { Remove-Item $key -Recurse -Force; Write-Host "Unregistered ${proto}://" }
     }
     $hkcuKey = "HKCU:\Software\Classes\AppUserModelId\$aumid"
     if (Test-Path $hkcuKey) { Remove-Item $hkcuKey -Force }
