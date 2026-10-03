@@ -1,0 +1,14 @@
+{
+  "name": "anthonybaldwin",
+  "owner": { "name": "Anthony Baldwin", "url": "https://github.com/anthonybaldwin" },
+  "description": "Claude Code plugins by Anthony Baldwin: an opinionated multi-row status line dashboard.",
+  "plugins": [
+    {
+      "name": "statusline-dashboard",
+      "source": "./plugins/statusline-dashboard",
+      "description": "Opinionated multi-row status line: context, cost, rate-limit windows with pace balance, git/PR, sub-agents, and config-scope breakdowns. Zero-dependency Bun scripts with Nerd Font glyphs.",
+      "category": "productivity",
+      "tags": ["statusline", "status-line", "dashboard", "rate-limits", "context-window", "nerd-fonts"]
+    }
+  ]
+}
