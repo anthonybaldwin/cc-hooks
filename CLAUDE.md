@@ -200,8 +200,8 @@ templates live in the data dir next to the staged binary. Setup scripts never to
 `settings.json`; the Windows one owns the registry (protocol handlers HKCU, AUMID HKLM with UAC).
 Linux is not implemented (plan: relay to the macOS/Windows notifier over SSH/WSL).
 
-## plugins/discord
+## What doesn't belong here
 
-Subtree of `anthonybaldwin/discord-channel-plugin`, itself a fork of Anthropic's official discord
-plugin. Keep upstream conventions (the only local manifest addition is `author`, which strict
-validation requires); changes here should be improvements worth upstreaming.
+Forks of other people's plugins (the official discord channel plugin was briefly a subtree and
+was taken out again): install those from their own marketplace. This repo holds only plugins
+written here.

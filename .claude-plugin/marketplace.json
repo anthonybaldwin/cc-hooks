@@ -1,7 +1,7 @@
 {
   "name": "cc-plugins",
   "owner": { "name": "Anthony Baldwin", "url": "https://github.com/anthonybaldwin" },
-  "description": "Anthony Baldwin's Claude Code plugins: a multi-row status line dashboard, a context-window bar above the prompt, status-driven terminal tinting, native desktop notifications, and a Discord channel.",
+  "description": "Anthony Baldwin's Claude Code plugins: a multi-row status line dashboard, a context-window bar above the prompt, status-driven terminal tinting, and native desktop notifications.",
   "plugins": [
     {
       "name": "statusline-dashboard",
@@ -30,13 +30,6 @@
       "description": "Mod: draws your context window as a stacked bar above the prompt, one color per category as /context breaks it down, live after every turn. /context-bar toggles it. Requires Claude Code 2.1.287+.",
       "category": "productivity",
       "tags": ["mod", "context-window", "context", "above-prompt"]
-    },
-    {
-      "name": "discord",
-      "source": "./plugins/discord",
-      "description": "Discord channel for Claude Code — a messaging bridge with built-in access control (pairing codes, allowlists, per-channel opt-in). Fork of the official discord plugin, maintained as an improvement baseline.",
-      "category": "integrations",
-      "tags": ["discord", "channel", "messaging", "mcp"]
     }
   ]
 }
