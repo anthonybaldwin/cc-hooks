@@ -1,7 +1,7 @@
 {
   "name": "cc-plugins",
   "owner": { "name": "Anthony Baldwin", "url": "https://github.com/anthonybaldwin" },
-  "description": "Anthony Baldwin's Claude Code plugins: a multi-row status line dashboard, status-driven terminal tinting, native desktop notifications, and a Discord channel.",
+  "description": "Anthony Baldwin's Claude Code plugins: a multi-row status line dashboard, a context-window bar above the prompt, status-driven terminal tinting, native desktop notifications, and a Discord channel.",
   "plugins": [
     {
       "name": "statusline-dashboard",
@@ -23,6 +23,13 @@
       "description": "Native desktop notifications when Claude finishes or needs input, with elapsed time, a button that focuses the originating terminal tab/pane, an open-in-editor button, and an optional AFK webhook (Discord, Slack, ntfy, Gotify). Windows (WinRT) and macOS (UserNotifications).",
       "category": "productivity",
       "tags": ["hooks", "notifications", "toast", "webhook", "windows", "macos"]
+    },
+    {
+      "name": "context-bar",
+      "source": "./plugins/context-bar",
+      "description": "Mod: draws your context window as a stacked bar above the prompt, one color per category as /context breaks it down, live after every turn. /context-bar toggles it. Requires Claude Code 2.1.287+.",
+      "category": "productivity",
+      "tags": ["mod", "context-window", "context", "above-prompt"]
     },
     {
       "name": "discord",

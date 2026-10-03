@@ -10,6 +10,7 @@
 | Plugin | What it does | Install |
 | --- | --- | --- |
 | [**statusline-dashboard**](plugins/statusline-dashboard/) | Opinionated multi-row status line: context, cost, rate-limit windows with pace balance, git/PR, sub-agents, and config-scope breakdowns. Zero-dependency Bun scripts with Nerd Font glyphs. | `/plugin install statusline-dashboard@cc-plugins` then `/statusline-dashboard:setup` |
+| [**context-bar**](plugins/context-bar/) | A mod: your context window as a stacked bar above the prompt, one color per category as `/context` breaks it down, live after every turn. `/context-bar` toggles it. Claude Code 2.1.287+. | `/plugin install context-bar@cc-plugins` |
 | [**session-color**](plugins/session-color/) | Tints the terminal background by session status — amber while Claude works, red when it needs you, green when done — per pane via OSC 11 (tmux-native on Linux, ConPTY on Windows). | `/plugin install session-color@cc-plugins` (+ `/session-color:setup` on Windows) |
 | [**notifications**](plugins/notifications/) | Native desktop notifications when Claude finishes or needs input: elapsed time, focus-the-originating-pane, open-in-editor, AFK webhook. Windows (WinRT) and macOS (UserNotifications). | `/plugin install notifications@cc-plugins` then `/notifications:setup` |
 | [**discord**](plugins/discord/) | Discord channel for Claude Code — messaging bridge with pairing codes, allowlists and per-channel opt-in. Fork of the official discord plugin. | `/plugin install discord@cc-plugins` then `/discord:configure` |
@@ -38,11 +39,12 @@ cc-plugins/
 ├─ plugins/
 │  ├─ statusline-dashboard/          # statusline.js, subagent-statusline.js, install.js,
 │  │                                 #   SessionStart staging hook, setup skill
+│  ├─ context-bar/                   # a mod: hooks/register.ts, types/, tests/
 │  ├─ session-color/                 # hooks.json + sh dispatcher; macos/ linux/ (shell), windows/ (Rust)
 │  ├─ notifications/                 # hooks.json + sh dispatcher; windows/ (Rust), macos/ (Swift)
 │  └─ discord/                       # MCP server (Bun) + skills
 ├─ check.js                          # statusline invariant checker (see its README → Development)
-└─ .github/workflows/check.yml       # check.js on 3 OSes, `claude plugin validate`, cargo + swift builds
+└─ .github/workflows/check.yml       # check.js on 3 OSes, `claude plugin validate` + `test`, cargo + swift builds
 ```
 
 To work on a plugin from a checkout, add the checkout as a local marketplace — it then loads in

@@ -36,6 +36,8 @@ jobs:
           for p in plugins/*/; do
             claude plugin validate --strict "$p"
           done
+      # The mod's tests run against the engine's test kit: no session, sign-in or network.
+      - run: claude plugin test plugins/context-bar
       # The hook dispatchers are the one piece of shell every platform runs (Git Bash on Windows).
       - run: |
           sh -n plugins/session-color/hooks/session-color.sh

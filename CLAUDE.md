@@ -161,6 +161,19 @@ PaceMetric). Kept to a few chars on purpose — the user wants it terse; don't e
 Test renders share the real `$TEMP/sl-*.json` caches — clean up anything you seed with fake
 data (`check.js` sandboxes `HOME`/`TEMP` for exactly this reason).
 
+## plugins/context-bar
+
+A **mod** (a plugin of function hooks, Claude Code 2.1.287+): `hooks/hooks.json` names
+`hooks/register.ts` under `modules`; `types/index.d.ts` is the `$.state` contract the validator
+holds the module to. Load the `plugin-authoring` skill before editing it — the API is the build's
+`claude-code.d.ts`, and the static validator has rules of its own: helpers that take `$` must be
+top-level function declarations (not closures inside `register`), `$` is always spelled
+`$.noun.method(...)`, and every `$.state` key must be declared in the contract. Keep
+`layout()`/`legend()` pure and exported so the tests can check the arithmetic without a drawing.
+Verify with `claude plugin validate --strict plugins/context-bar` and
+`claude plugin test plugins/context-bar` (no session needed); a real look in a terminal is still
+needed for anything visual, since the test kit checks the tree, not the paint.
+
 ## plugins/session-color
 
 Status-driven terminal background tint. `hooks/hooks.json` maps nine events to one of four state

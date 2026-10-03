@@ -1,0 +1,4 @@
+{
+  "description": "Mod: draws the context window as a stacked bar in the band above the prompt (see hooks/register.ts).",
+  "modules": ["./register.ts"]
+}
