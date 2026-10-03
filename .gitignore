@@ -1,1 +1,14 @@
 .DS_Store
+*.swp
+*~
+
+# Built hook binaries and per-user notification config/assets (plugins/notifications,
+# plugins/session-color). Plugin installs keep all of these in ${CLAUDE_PLUGIN_DATA}; a build
+# from a checkout leaves them here.
+target/
+.build/
+bin/
+config.json
+webhook*.json
+!webhook*.json.example
+icons/

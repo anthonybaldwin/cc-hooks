@@ -1,6 +1,34 @@
+# Dependabot: the CI workflow's actions, plus the two Rust crates behind the Windows hooks. The
+# Bun scripts have no package.json/lockfile, and the discord plugin pins its deps in bun.lock
+# (Dependabot has no `bun` ecosystem yet) — add entries if either changes.
 version: 2
 updates:
-  - package-ecosystem: "nuget"
-    directory: "/windows/src"
+  - package-ecosystem: github-actions
+    directory: /
     schedule:
-      interval: "weekly"
+      interval: weekly
+    # Bundle everything: one PR for the week's version bumps, one for any security bumps
+    # (Dependabot keeps those two streams separate, so each needs its own group).
+    groups:
+      actions:
+        applies-to: version-updates
+        patterns: ["*"]
+      actions-security:
+        applies-to: security-updates
+        patterns: ["*"]
+  - package-ecosystem: cargo
+    directory: /plugins/notifications/windows
+    schedule:
+      interval: weekly
+    groups:
+      cargo:
+        applies-to: version-updates
+        patterns: ["*"]
+  - package-ecosystem: cargo
+    directory: /plugins/session-color/windows
+    schedule:
+      interval: weekly
+    groups:
+      cargo:
+        applies-to: version-updates
+        patterns: ["*"]

@@ -1,0 +1,3 @@
+# Bun scripts with shebangs: keep LF on every platform (a CRLF checkout on Windows breaks
+# `#!/usr/bin/env bun` under WSL/Git Bash and adds \r noise to the rendered rows).
+* text=auto eol=lf
