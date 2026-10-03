@@ -55,7 +55,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo build --release --manifest-path plugins/session-color/windows/Cargo.toml
       - run: cargo build --release --manifest-path plugins/notifications/windows/Cargo.toml
-      - run: pwsh -NoProfile -Command "foreach (\$f in 'plugins/session-color/windows/setup.ps1','plugins/notifications/windows/setup.ps1') { \$null = [System.Management.Automation.Language.Parser]::ParseFile(\$f, [ref]\$null, [ref]\$e); if (\$e) { \$e; exit 1 } }"
+      # Parse-check the setup scripts (the runner's default shell is already pwsh; no escaping games).
+      - shell: pwsh
+        run: |
+          foreach ($f in 'plugins/session-color/windows/setup.ps1', 'plugins/notifications/windows/setup.ps1') {
+            $parseErrors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($f, [ref]$null, [ref]$parseErrors) | Out-Null
+            if ($parseErrors) { $parseErrors; exit 1 }
+            Write-Host "parsed $f"
+          }
 
   build-macos:
     runs-on: macos-latest
