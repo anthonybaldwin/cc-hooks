@@ -23,7 +23,8 @@ skills, sources and README — and the root holds only the marketplace file, `ch
   The manifest version IS the plugin version; a push without a bump never reaches installed
   copies. A checkout added as a local marketplace loads in place and ignores the version.
 - After touching anything under `plugins/` or `.claude-plugin/`: `claude plugin validate --strict .`
-  and `claude plugin validate --strict plugins/<name>` (non-strict for `discord`, an upstream fork).
+  and `claude plugin validate --strict plugins/<name>` (validating the marketplace also validates
+  every plugin's manifest, so a warning anywhere fails the strict root run).
   CI does the same, plus `sh -n` on the dispatchers, `cargo build` of the Windows crates and
   `swift build` of the macOS package.
 - Commit when a change is done and verified; **do not push without being asked.**
@@ -189,5 +190,5 @@ Linux is not implemented (plan: relay to the macOS/Windows notifier over SSH/WSL
 ## plugins/discord
 
 Subtree of `anthonybaldwin/discord-channel-plugin`, itself a fork of Anthropic's official discord
-plugin. Keep upstream conventions (its manifest has no `author`, hence the non-strict validate);
-changes here should be improvements worth upstreaming.
+plugin. Keep upstream conventions (the only local manifest addition is `author`, which strict
+validation requires); changes here should be improvements worth upstreaming.

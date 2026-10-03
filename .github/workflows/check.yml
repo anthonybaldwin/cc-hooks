@@ -20,8 +20,9 @@ jobs:
 
   # `claude plugin validate` reads the marketplace + each plugin's manifest, hooks file and skills
   # the way Claude Code will at install time. --strict turns warnings (reserved-looking names,
-  # missing metadata, unquoted path variables in hook commands) into failures. The discord plugin
-  # is an upstream fork with its own manifest conventions, so it gets the non-strict pass.
+  # missing metadata, unquoted path variables in hook commands) into failures. Validating the
+  # marketplace also validates every relative-path plugin's manifest; the per-plugin runs add the
+  # hooks/skills checks.
   validate:
     runs-on: ubuntu-latest
     steps:
@@ -32,10 +33,9 @@ jobs:
       - run: npm install -g @anthropic-ai/claude-code
       - run: claude plugin validate --strict .
       - run: |
-          for p in statusline-dashboard session-color notifications; do
-            claude plugin validate --strict "plugins/$p"
+          for p in plugins/*/; do
+            claude plugin validate --strict "$p"
           done
-          claude plugin validate plugins/discord
       # The hook dispatchers are the one piece of shell every platform runs (Git Bash on Windows).
       - run: |
           sh -n plugins/session-color/hooks/session-color.sh
