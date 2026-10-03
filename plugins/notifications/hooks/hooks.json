@@ -1,0 +1,17 @@
+{
+  "description": "Desktop notifications when Claude finishes or needs input. The dispatcher runs the native binary that /notifications:setup built into the plugin's data dir (Windows exe or macOS .app); on Linux, or before setup, it's a silent no-op. Notification/Stop are async because the macOS handler blocks until the notification is clicked or dismissed; UserPromptSubmit is async because the Windows handler stays alive as the focus watcher.",
+  "hooks": {
+    "UserPromptSubmit": [
+      { "hooks": [{ "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}\"/hooks/notifications.sh on-submit", "async": true }] }
+    ],
+    "Notification": [
+      { "hooks": [{ "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}\"/hooks/notifications.sh notify notification", "async": true }] }
+    ],
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}\"/hooks/notifications.sh notify stop", "async": true }] }
+    ],
+    "SessionEnd": [
+      { "hooks": [{ "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}\"/hooks/notifications.sh on-end", "timeout": 5 }] }
+    ]
+  }
+}

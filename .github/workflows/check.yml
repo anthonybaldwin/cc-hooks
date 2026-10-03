@@ -5,6 +5,8 @@ on:
   pull_request:
 
 jobs:
+  # statusline-dashboard: renders fixture payloads across terminal sizes in a sandboxed HOME/TEMP
+  # and asserts the width / height / blank-row invariants, plus the staging hook's contract.
   check:
     strategy:
       fail-fast: false
@@ -14,10 +16,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
-      # Renders fixture payloads across terminal sizes in a sandboxed HOME/TEMP and asserts the
-      # width / height / blank-row invariants, plus the plugin staging hook's contract (see check.js).
       - run: bun check.js
 
+  # `claude plugin validate` reads the marketplace + each plugin's manifest, hooks file and skills
+  # the way Claude Code will at install time. --strict turns warnings (reserved-looking names,
+  # missing metadata, unquoted path variables in hook commands) into failures. The discord plugin
+  # is an upstream fork with its own manifest conventions, so it gets the non-strict pass.
   validate:
     runs-on: ubuntu-latest
     steps:
@@ -25,9 +29,34 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
-      # `claude plugin validate` reads the marketplace + plugin manifests, the hook file and the
-      # skill the way Claude Code will at install time. --strict turns warnings (reserved-looking
-      # names, missing metadata, unquoted path variables) into failures.
       - run: npm install -g @anthropic-ai/claude-code
       - run: claude plugin validate --strict .
-      - run: claude plugin validate --strict plugins/statusline-dashboard
+      - run: |
+          for p in statusline-dashboard session-color notifications; do
+            claude plugin validate --strict "plugins/$p"
+          done
+          claude plugin validate plugins/discord
+      # The hook dispatchers are the one piece of shell every platform runs (Git Bash on Windows).
+      - run: |
+          sh -n plugins/session-color/hooks/session-color.sh
+          sh -n plugins/notifications/hooks/notifications.sh
+          sh -n plugins/session-color/linux/session-color.sh
+          sh -n plugins/session-color/macos/session-color.sh
+          bash -n plugins/notifications/macos/setup.sh
+
+  # The native hook binaries: make sure the Rust crates and the Swift package still build on the
+  # platforms /session-color:setup and /notifications:setup build them on.
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build --release --manifest-path plugins/session-color/windows/Cargo.toml
+      - run: cargo build --release --manifest-path plugins/notifications/windows/Cargo.toml
+      - run: pwsh -NoProfile -Command "foreach (\$f in 'plugins/session-color/windows/setup.ps1','plugins/notifications/windows/setup.ps1') { \$null = [System.Management.Automation.Language.Parser]::ParseFile(\$f, [ref]\$null, [ref]\$e); if (\$e) { \$e; exit 1 } }"
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: swift build -c release --package-path plugins/notifications/macos

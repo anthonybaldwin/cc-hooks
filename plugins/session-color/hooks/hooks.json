@@ -1,0 +1,32 @@
+{
+  "description": "Status-driven terminal background tint. Every event runs the same dispatcher with a state word; the dispatcher picks the platform implementation (macOS/Linux shell, Windows exe built by /session-color:setup). Notification is deliberately NOT wired: it only repaints states already covered by the more specific events below (see README).",
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [{ "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}\"/hooks/session-color.sh reset", "timeout": 10 }] }
+    ],
+    "UserPromptSubmit": [
+      { "hooks": [{ "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}\"/hooks/session-color.sh working", "timeout": 10 }] }
+    ],
+    "PostToolUse": [
+      { "hooks": [{ "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}\"/hooks/session-color.sh working", "timeout": 10 }] }
+    ],
+    "PostToolUseFailure": [
+      { "hooks": [{ "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}\"/hooks/session-color.sh working", "timeout": 10 }] }
+    ],
+    "ElicitationResult": [
+      { "hooks": [{ "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}\"/hooks/session-color.sh working", "timeout": 10 }] }
+    ],
+    "PermissionRequest": [
+      { "hooks": [{ "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}\"/hooks/session-color.sh needs", "timeout": 10 }] }
+    ],
+    "Elicitation": [
+      { "hooks": [{ "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}\"/hooks/session-color.sh needs", "timeout": 10 }] }
+    ],
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}\"/hooks/session-color.sh done", "timeout": 10 }] }
+    ],
+    "SessionEnd": [
+      { "hooks": [{ "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}\"/hooks/session-color.sh reset", "timeout": 10 }] }
+    ]
+  }
+}

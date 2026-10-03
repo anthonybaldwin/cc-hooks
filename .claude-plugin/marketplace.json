@@ -1,7 +1,7 @@
 {
-  "name": "anthonybaldwin",
+  "name": "cc-plugins",
   "owner": { "name": "Anthony Baldwin", "url": "https://github.com/anthonybaldwin" },
-  "description": "Claude Code plugins by Anthony Baldwin: an opinionated multi-row status line dashboard.",
+  "description": "Anthony Baldwin's Claude Code plugins: a multi-row status line dashboard, status-driven terminal tinting, native desktop notifications, and a Discord channel.",
   "plugins": [
     {
       "name": "statusline-dashboard",
@@ -9,6 +9,27 @@
       "description": "Opinionated multi-row status line: context, cost, rate-limit windows with pace balance, git/PR, sub-agents, and config-scope breakdowns. Zero-dependency Bun scripts with Nerd Font glyphs.",
       "category": "productivity",
       "tags": ["statusline", "status-line", "dashboard", "rate-limits", "context-window", "nerd-fonts"]
+    },
+    {
+      "name": "session-color",
+      "source": "./plugins/session-color",
+      "description": "Tints the terminal background by session status — amber while Claude works, red when it needs you, green when it's done — per pane, so a wall of sessions reads at a glance. macOS, Linux (tmux-aware), Windows.",
+      "category": "productivity",
+      "tags": ["hooks", "terminal", "osc-11", "tmux", "session-status"]
+    },
+    {
+      "name": "notifications",
+      "source": "./plugins/notifications",
+      "description": "Native desktop notifications when Claude finishes or needs input, with elapsed time, a button that focuses the originating terminal tab/pane, an open-in-editor button, and an optional AFK webhook (Discord, Slack, ntfy, Gotify). Windows (WinRT) and macOS (UserNotifications).",
+      "category": "productivity",
+      "tags": ["hooks", "notifications", "toast", "webhook", "windows", "macos"]
+    },
+    {
+      "name": "discord",
+      "source": "./plugins/discord",
+      "description": "Discord channel for Claude Code — a messaging bridge with built-in access control (pairing codes, allowlists, per-channel opt-in). Fork of the official discord plugin, maintained as an improvement baseline.",
+      "category": "integrations",
+      "tags": ["discord", "channel", "messaging", "mcp"]
     }
   ]
 }
