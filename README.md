@@ -121,25 +121,45 @@ the first thing dropped to reclaim width; the total always stays visible.
 
 ## Install
 
-Clone it anywhere you like:
+### As a plugin (recommended)
+
+This repo is a one-plugin [marketplace](https://code.claude.com/docs/en/plugins/marketplace-reference).
+In Claude Code:
+
+```
+/plugin marketplace add anthonybaldwin/claude-statusline
+/plugin install statusline-dashboard@anthonybaldwin
+/statusline-dashboard:setup
+```
+
+Claude Code can't let a plugin set `statusLine` directly, so the last step runs the plugin's
+installer, which writes the `statusLine` and `subagentStatusLine` blocks into
+`~/.claude/settings.json` for you (backing it up first and preserving your other keys). Restart
+Claude Code to see it.
+
+The installer points settings at copies of the scripts in the plugin's persistent data directory
+(`~/.claude/plugins/data/…`), not at the plugin itself: a plugin's install path changes with every
+version, while the data directory is stable. A `SessionStart` hook in the plugin keeps those
+copies current, so `/plugin update` flows through on the next session with no re-setup. To remove
+it later, run `/statusline-dashboard:setup --uninstall` (`--print` previews either way).
+
+### From a checkout
+
+Clone it anywhere you like and run the installer — the same script, pointed at the checkout
+instead of the plugin data directory. Handy for hacking on it, since edits take effect on the
+next render:
 
 ```bash
 git clone https://github.com/anthonybaldwin/claude-statusline.git
-```
-
-Then run the installer — it configures `~/.claude/settings.json` for you. It's a Bun script (Bun is
-required to run the status line anyway), so it works the same on Windows, macOS, and Linux:
-
-```bash
-cd claude-statusline
+cd claude-statusline/plugins/statusline-dashboard
 bun install.js              # add --print to preview the changes without writing
 bun install.js --uninstall  # later: remove the blocks that point at this checkout
 ```
 
-It points Claude Code's `statusLine` and `subagentStatusLine` at these scripts, backs up any
-existing `settings.json`, and preserves your other keys. Restart Claude Code to see it.
-`--uninstall` is the mirror image: it clears only blocks that point at this checkout (a status
-line configured elsewhere is left alone) and takes the same `.bak` backup first.
+It's a Bun script (Bun is required to run the status line anyway), so it works the same on
+Windows, macOS, and Linux. `--uninstall` is the mirror image: it clears only blocks that point at
+this checkout (a status line configured elsewhere is left alone) and takes the same `.bak` backup
+first.
 
 ### Manual setup
 
@@ -150,7 +170,7 @@ Prefer to wire it up by hand? Add a `statusLine` block to `~/.claude/settings.js
 {
   "statusLine": {
     "type": "command",
-    "command": "bun \"/path/to/claude-statusline/statusline.js\"",
+    "command": "bun \"/path/to/claude-statusline/plugins/statusline-dashboard/statusline.js\"",
     "hideVimModeIndicator": true,
     "padding": 0,
     "refreshInterval": 60
@@ -178,7 +198,7 @@ and clamped to the row width, matching the main dashboard. Wire it up alongside 
 {
   "subagentStatusLine": {
     "type": "command",
-    "command": "bun \"/path/to/claude-statusline/subagent-statusline.js\""
+    "command": "bun \"/path/to/claude-statusline/plugins/statusline-dashboard/subagent-statusline.js\""
   }
 }
 ```
@@ -205,15 +225,24 @@ extensive inline comments explain *why* each threshold, scope rule, and color wa
 
 ## Development
 
+Layout: the repo root is the marketplace (`.claude-plugin/marketplace.json`), and
+`plugins/statusline-dashboard/` is the plugin — the two scripts, `install.js`, the
+`SessionStart` staging hook (`hooks/`, `scripts/stage.js`) and the `setup` skill. `check.js` and
+CI live at the root.
+
 `check.js` is the safety net for the rendering invariants that matter to your terminal (no line
 wider than the window, height capped at a third of it and never shrinking between renders, no
 whitespace-led or empty rows). It feeds fixture payloads to both scripts across a grid of
 terminal sizes, inside a sandboxed `HOME`/`TEMP` so nothing it does touches your real config or
-the live caches, and fails on the first violation. CI runs it on Linux, macOS, and Windows.
+the live caches, and fails on the first violation. It also exercises the staging hook's contract
+(silent, exit 0, byte-exact copies, no rewrites on a repeat run). CI runs it on Linux, macOS,
+and Windows, and runs `claude plugin validate --strict` on the marketplace and the plugin.
 
 ```bash
 bun check.js                # assert the invariants
 bun check.js --show 60x24   # …and print one stripped render at that size to eyeball
+claude plugin validate --strict .                               # marketplace
+claude plugin validate --strict plugins/statusline-dashboard    # plugin
 ```
 
 For a quick look at a specific payload, pipe JSON straight in — Claude Code exports `COLUMNS`
@@ -222,8 +251,16 @@ and `LINES`, so set them to the size you want to preview:
 ```bash
 echo '{"session_id":"x","model":{"display_name":"Opus"},"cwd":"'"$PWD"'","cost":{},
   "context_window":{"context_window_size":200000,"current_usage":{"input_tokens":50000}}}' \
-  | COLUMNS=120 LINES=40 bun statusline.js
+  | COLUMNS=120 LINES=40 bun plugins/statusline-dashboard/statusline.js
 ```
+
+To try a local checkout as the installed plugin (loads in place, no copy, edits apply on the next
+session), add the checkout as a local marketplace:
+`/plugin marketplace add /path/to/claude-statusline`, then install as above.
+
+Ship a change to plugin users by bumping `version` in `plugins/statusline-dashboard/.claude-plugin/plugin.json`:
+Claude Code treats the manifest version as the plugin's version, so a push without a bump doesn't
+reach installed copies.
 
 ## License
 

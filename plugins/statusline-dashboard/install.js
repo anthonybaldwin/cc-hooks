@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Cross-platform installer for claude-statusline (Windows / macOS / Linux). Bun is already required
+// Cross-platform installer for statusline-dashboard (Windows / macOS / Linux). Bun is already required
 // to run the status line, so the installer is itself a Bun script — no shell/PowerShell needed.
 //
 //   bun install.js              configure ~/.claude/settings.json to use these scripts
@@ -11,6 +11,11 @@
 // merging into any existing settings.json (a .bak copy is made first) and preserving unrelated keys.
 // Uninstall is symmetric and cautious: a block whose command points at some OTHER status line is
 // left alone (and reported), so running it in the wrong checkout can't strip someone else's setup.
+//
+// "THIS directory" is deliberate: run from a git checkout it wires the checkout (edits go live on
+// the next render); run from the plugin's data dir — where the SessionStart hook (scripts/stage.js)
+// stages a copy of these files and the `setup` skill invokes it — it wires that stable copy. The
+// plugin root itself is never a valid target: it's a per-version cache path that moves on update.
 import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
@@ -95,13 +100,13 @@ if (hadExisting) copyFileSync(settingsPath, settingsPath + ".bak");
 writeFileSync(settingsPath, json);
 
 if (uninstall) {
-  console.log("✓ claude-statusline removed from settings");
+  console.log("✓ statusline-dashboard removed from settings");
   console.log(`  settings:  ${settingsPath}  (backup: settings.json.bak)`);
   console.log(`  cleared:   ${removed.join(", ")}`);
   for (const key of foreign) console.log(`  kept:      ${key} (points elsewhere)`);
   console.log("\nRestart Claude Code to return to its built-in footer.");
 } else {
-  console.log("✓ claude-statusline configured");
+  console.log("✓ statusline-dashboard configured");
   console.log(`  settings:           ${settingsPath}${hadExisting ? "  (backup: settings.json.bak)" : "  (created)"}`);
   console.log(`  statusLine:         bun "${statusline}"`);
   console.log(`  subagentStatusLine: bun "${subagent}"`);

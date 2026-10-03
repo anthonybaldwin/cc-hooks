@@ -5,17 +5,34 @@ dependencies, no build step.
 
 ## Files
 
-- `statusline.js` — the main dashboard. Reads Claude Code's statusline JSON from stdin, writes
-  ANSI-styled rows to stdout. Everything lives in this one file, ordered roughly: ANSI/color
-  constants → glyphs → formatting helpers → config-counting subsystem (scopes, plugins, MCP) →
-  stdin parse → per-row segment building → `packSection` layout → output.
-- `subagent-statusline.js` — the per-subagent row for Claude Code's agent panel
-  (`subagentStatusLine` in settings). Same conventions, much smaller.
-- `install.js` — points `~/.claude/settings.json` at the scripts in this checkout (merges,
-  backs up first). `bun install.js --print` for a dry run; `--uninstall` clears only blocks that
-  point at this checkout.
+The repo root is a one-plugin **marketplace** (`.claude-plugin/marketplace.json`, name
+`anthonybaldwin`); the plugin itself is `plugins/statusline-dashboard/` (name
+`statusline-dashboard` — plugin names can't start with `claude-`, that prefix is reserved).
+Everything a user installs lives under the plugin dir; tooling and docs stay at the root.
+
+- `plugins/statusline-dashboard/statusline.js` — the main dashboard. Reads Claude Code's
+  statusline JSON from stdin, writes ANSI-styled rows to stdout. Everything lives in this one
+  file, ordered roughly: ANSI/color constants → glyphs → formatting helpers → config-counting
+  subsystem (scopes, plugins, MCP) → stdin parse → per-row segment building → `packSection`
+  layout → output.
+- `plugins/statusline-dashboard/subagent-statusline.js` — the per-subagent row for Claude Code's
+  agent panel (`subagentStatusLine` in settings). Same conventions, much smaller.
+- `plugins/statusline-dashboard/install.js` — points `~/.claude/settings.json` at the scripts in
+  ITS OWN directory (merges, backs up first). Run from the checkout it wires the checkout; run
+  from the plugin data dir (via the `setup` skill) it wires the staged copies. `--print` for a dry
+  run; `--uninstall` clears only blocks that point at that directory.
+- `plugins/statusline-dashboard/hooks/hooks.json` + `scripts/stage.js` — `SessionStart` hook
+  that copies the three scripts into `${CLAUDE_PLUGIN_DATA}`. **Why:** a plugin can't set
+  `statusLine`, and `${CLAUDE_PLUGIN_ROOT}` is a per-version cache path that moves on every
+  update — so settings point at the stable data dir and the hook keeps it current. Must stay
+  silent (SessionStart stdout is injected into Claude's context) and always exit 0.
+- `plugins/statusline-dashboard/skills/setup/SKILL.md` — `/statusline-dashboard:setup`: stages,
+  then runs `install.js` from the data dir (`--print` / `--uninstall` pass through).
+- `plugins/statusline-dashboard/.claude-plugin/plugin.json` — manifest. **Bump `version` to ship
+  to plugin users**: the manifest version IS the plugin version, so a push without a bump never
+  reaches installed copies.
 - `check.js` — the invariant checker (see below). `.github/workflows/check.yml` runs it on
-  Linux/macOS/Windows.
+  Linux/macOS/Windows and runs `claude plugin validate --strict` on the marketplace + plugin.
 
 ## Running / verifying changes
 
@@ -34,7 +51,8 @@ echo '{"session_id":"x","model":{"display_name":"Opus"},"cwd":"C:/some/repo","co
 
 The user's live statusline runs `statusline.js` **directly from this working tree** (settings
 point at the repo file, not a copy) — edits take effect on the next render, including broken
-ones. Don't leave the file in a non-running state between edits.
+ones. Don't leave the file in a non-running state between edits. (Plugin installs run the staged
+copy in `~/.claude/plugins/data/` instead and only pick up a `version` bump.)
 
 ## Critical invariants
 
@@ -116,6 +134,10 @@ PaceMetric). Kept to a few chars on purpose — the user wants it terse; don't e
 
 - Update the README row list when rows change — it enumerates every row in render order.
 - Run `bun check.js` before committing; a new row also means bumping `SECTIONS` in `check.js`.
+  After touching anything under `plugins/` or `.claude-plugin/`, also run
+  `claude plugin validate --strict .` and `claude plugin validate --strict plugins/statusline-dashboard`.
+- Adding a file the status line needs at runtime = adding it to `FILES` in `scripts/stage.js`
+  (and the `staged` list in `check.js`) — otherwise plugin installs won't have it.
 - Commit when a change is done and verified; **do not push without being asked.**
 - Test renders share the real `$TEMP/sl-*.json` caches — clean up anything you seed with fake
   data.

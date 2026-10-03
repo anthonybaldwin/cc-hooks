@@ -14,13 +14,15 @@
 // and TEMP at a scratch dir (CLAUDE.md: test renders otherwise share the live sl-*.json caches). A
 // FRESH usage-API cache is seeded there so the render never fires the out-of-band network refresh.
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const here = import.meta.dir;
-const MAIN = join(here, "statusline.js");
-const SUB = join(here, "subagent-statusline.js");
+const PLUGIN = join(here, "plugins", "statusline-dashboard"); // the plugin root (see marketplace.json)
+const MAIN = join(PLUGIN, "statusline.js");
+const SUB = join(PLUGIN, "subagent-statusline.js");
+const STAGE = join(PLUGIN, "scripts", "stage.js");
 const showArg = (process.argv.find((a, i) => process.argv[i - 1] === "--show") || "").match(/^(\d+)x(\d+)$/);
 
 // --- sandbox ---------------------------------------------------------------------------------
@@ -201,6 +203,38 @@ for (const [label, input] of [["empty stdin", ""], ["garbage stdin", "not json"]
     expect(where, vlen(obj.content) <= cols - 1, `row ${obj.id} is ${vlen(obj.content)} cells, max ${cols - 1}`);
     expect(where, !/\n/.test(obj.content), `row ${obj.id} contains a newline`);
   }
+}
+
+// --- plugin staging hook -----------------------------------------------------------------------
+// stage.js copies the scripts from the (per-version) plugin root into the stable plugin data dir.
+// Contract: silent (SessionStart stdout lands in Claude's context), exit 0, copies exactly the
+// three scripts, rewrites nothing on a repeat run, and is a no-op outside a plugin hook.
+{
+  const where = "stage.js";
+  const data = join(sandbox, "plugin-data", "nested"); // must be created on demand
+  const env = { ...process.env, CLAUDE_PLUGIN_ROOT: PLUGIN, CLAUDE_PLUGIN_DATA: data };
+  const r = spawnSync(process.execPath, [STAGE], { env, encoding: "utf8", windowsHide: true });
+  expect(where, r.status === 0 && r.stdout === "" && !r.stderr, `exit ${r.status}, stdout ${JSON.stringify(r.stdout)}, stderr ${r.stderr.trim()}`);
+  const staged = ["statusline.js", "subagent-statusline.js", "install.js"];
+  for (const name of staged) {
+    const ok = existsSync(join(data, name)) && readFileSync(join(data, name)).equals(readFileSync(join(PLUGIN, name)));
+    expect(where, ok, `${name} not staged byte-for-byte`);
+  }
+  expect(where, readdirSync(data).sort().join(",") === staged.slice().sort().join(","), `staged extra files: ${readdirSync(data).join(", ")}`);
+  // The staged copy must still run from the data dir (the user's statusLine command points there).
+  const r2 = spawnSync(process.execPath, [join(data, "statusline.js")], { input: JSON.stringify(MINIMAL), env: { ...process.env, HOME: home, USERPROFILE: home, TEMP: temp, TMP: temp, COLUMNS: "80" }, encoding: "utf8", windowsHide: true });
+  expect(where, r2.status === 0 && !r2.stderr && r2.stdout.length > 0, `staged statusline.js: exit ${r2.status} ${r2.stderr.trim()}`);
+  // Repeat run: byte-identical copies are left alone (mtime unchanged).
+  const before = staged.map((n) => statSync(join(data, n)).mtimeMs);
+  const r3 = spawnSync(process.execPath, [STAGE], { env, encoding: "utf8", windowsHide: true });
+  const after = staged.map((n) => statSync(join(data, n)).mtimeMs);
+  expect(where, r3.status === 0 && before.every((t, i) => t === after[i]), "repeat run rewrote an unchanged file");
+  // Outside Claude Code (no plugin env): nothing written, nothing said.
+  const bare = { ...process.env };
+  delete bare.CLAUDE_PLUGIN_ROOT;
+  delete bare.CLAUDE_PLUGIN_DATA;
+  const r4 = spawnSync(process.execPath, [STAGE], { env: bare, encoding: "utf8", windowsHide: true });
+  expect(where, r4.status === 0 && r4.stdout === "" && !r4.stderr, `bare run: exit ${r4.status} ${r4.stdout} ${r4.stderr}`);
 }
 
 if (showArg) {

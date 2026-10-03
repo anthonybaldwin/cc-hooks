@@ -15,5 +15,19 @@ jobs:
       - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
       # Renders fixture payloads across terminal sizes in a sandboxed HOME/TEMP and asserts the
-      # width / height / blank-row invariants (see check.js).
+      # width / height / blank-row invariants, plus the plugin staging hook's contract (see check.js).
       - run: bun check.js
+
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      # `claude plugin validate` reads the marketplace + plugin manifests, the hook file and the
+      # skill the way Claude Code will at install time. --strict turns warnings (reserved-looking
+      # names, missing metadata, unquoted path variables) into failures.
+      - run: npm install -g @anthropic-ai/claude-code
+      - run: claude plugin validate --strict .
+      - run: claude plugin validate --strict plugins/statusline-dashboard
